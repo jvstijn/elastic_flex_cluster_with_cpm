@@ -1,0 +1,166 @@
+name: cpmw-scoring
+description: Score each cluster from ML forecasts vs registry capacity. Native port of the cpm-scoring watcher (ES aggregations + data.map, no Painless).
+enabled: true
+triggers:
+  - type: scheduled
+    with:
+      rrule:
+        freq: DAILY
+        interval: 1
+        tzid: UTC
+        byhour: [0]
+        byminute: [15]
+steps:
+  # --- Inputs --------------------------------------------------------------
+  - name: registry
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /cpmw-cluster-registry/_search
+      body:
+        size: 10
+        query:
+          term: { active: true }
+
+  - name: disk_forecast
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: "/.ml-anomalies-*/_search"
+      body:
+        size: 0
+        query:
+          bool:
+            filter:
+              - term: { job_id: cpm-store-size }
+              - term: { result_type: model_forecast }
+              - range: { timestamp: { gte: now, lte: now+24h } }
+        aggs:
+          by_cluster:
+            terms: { field: partition_field_value, size: 10 }
+            aggs:
+              peak: { max: { field: forecast_prediction } }
+
+  - name: jvm_forecast
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: "/.ml-anomalies-*/_search"
+      body:
+        size: 0
+        query:
+          bool:
+            filter:
+              - term: { job_id: cpm-jvm-heap }
+              - term: { result_type: model_forecast }
+              - range: { timestamp: { gte: now, lte: now+24h } }
+        aggs:
+          by_cluster:
+            terms: { field: partition_field_value, size: 10 }
+            aggs:
+              peak: { max: { field: forecast_prediction } }
+
+  - name: shard_forecast
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: "/.ml-anomalies-*/_search"
+      body:
+        size: 0
+        query:
+          bool:
+            filter:
+              - term: { job_id: cpm-shard-count }
+              - term: { result_type: model_forecast }
+              - range: { timestamp: { gte: now, lte: now+24h } }
+        aggs:
+          by_cluster:
+            terms: { field: partition_field_value, size: 10 }
+            aggs:
+              peak: { max: { field: forecast_prediction } }
+
+  - name: load_forecast
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: "/.ml-anomalies-*/_search"
+      body:
+        size: 0
+        query:
+          bool:
+            filter:
+              - term: { job_id: cpm-cluster-event-rate }
+              - term: { result_type: model_forecast }
+              - range: { timestamp: { gte: now, lte: now+24h } }
+        aggs:
+          by_cluster:
+            terms: { field: partition_field_value, size: 10 }
+            aggs:
+              peak: { max: { field: forecast_prediction } }
+
+  # --- Transform: base sub-scores per cluster ------------------------------
+  - name: build_scores
+    type: data.map
+    items: "${{ steps.registry.output.hits.hits }}"
+    with:
+      fields:
+        cluster_id: "{{ item._source.cluster_id }}"
+        cluster_uuid: "{{ item._source.cluster_uuid }}"
+        disk_used_pct_forecast: >-
+          {%- assign b = steps.disk_forecast.output.aggregations.by_cluster.buckets | where: 'key', item._source.cluster_uuid | first -%}
+          {%- assign v = 0 -%}{%- if b and b.peak.value -%}{%- assign v = b.peak.value -%}{%- endif -%}
+          {%- assign dt = item._source.disk_total_bytes | plus: 0 -%}
+          {%- if dt > 0 -%}{{ v | times: 100.0 | divided_by: dt | round: 4 }}{%- else -%}0{%- endif -%}
+        jvm_heap_pct_forecast: >-
+          {%- assign b = steps.jvm_forecast.output.aggregations.by_cluster.buckets | where: 'key', item._source.cluster_uuid | first -%}
+          {%- if b and b.peak.value -%}{{ b.peak.value | round: 4 }}{%- else -%}0{%- endif -%}
+        shard_score: >-
+          {%- assign b = steps.shard_forecast.output.aggregations.by_cluster.buckets | where: 'key', item._source.cluster_uuid | first -%}
+          {%- assign v = 0 -%}{%- if b and b.peak.value -%}{%- assign v = b.peak.value -%}{%- endif -%}
+          {%- assign sm = item._source.shard_max_threshold | plus: 0 -%}
+          {%- if sm > 0 -%}{{ v | times: 100.0 | divided_by: sm | round: 4 }}{%- else -%}0{%- endif -%}
+        write_queue_forecast: >-
+          {%- assign b = steps.load_forecast.output.aggregations.by_cluster.buckets | where: 'key', item._source.cluster_uuid | first -%}
+          {%- if b and b.peak.value -%}{{ b.peak.value | round: 4 }}{%- else -%}0{%- endif -%}
+        load_score: >-
+          {%- assign b = steps.load_forecast.output.aggregations.by_cluster.buckets | where: 'key', item._source.cluster_uuid | first -%}
+          {%- assign v = 0 -%}{%- if b and b.peak.value -%}{%- assign v = b.peak.value -%}{%- endif -%}
+          {%- assign qt = item._source.write_queue_threshold | plus: 0 -%}
+          {%- if qt > 0 -%}{{ v | times: 100.0 | divided_by: qt | round: 4 }}{%- else -%}0{%- endif -%}
+
+  # --- Transform: weighted total + alert -----------------------------------
+  - name: build_final
+    type: data.map
+    items: "${{ steps.build_scores.output }}"
+    with:
+      fields:
+        cluster_id: "{{ item.cluster_id }}"
+        cluster_uuid: "{{ item.cluster_uuid }}"
+        disk_used_pct_forecast: "{{ item.disk_used_pct_forecast }}"
+        jvm_heap_pct_forecast: "{{ item.jvm_heap_pct_forecast }}"
+        shard_score: "{{ item.shard_score }}"
+        write_queue_forecast: "{{ item.write_queue_forecast }}"
+        load_score: "{{ item.load_score }}"
+        total_score: >-
+          {%- assign t = item.disk_used_pct_forecast | times: 0.50 -%}
+          {%- assign t = item.jvm_heap_pct_forecast | times: 0.25 | plus: t -%}
+          {%- assign t = item.shard_score | times: 0.05 | plus: t -%}
+          {%- assign t = item.load_score | times: 0.20 | plus: t -%}
+          {{ t | round: 4 }}
+        alert: >-
+          {%- assign t = item.disk_used_pct_forecast | times: 0.50 -%}
+          {%- assign t = item.jvm_heap_pct_forecast | times: 0.25 | plus: t -%}
+          {%- assign t = item.shard_score | times: 0.05 | plus: t -%}
+          {%- assign t = item.load_score | times: 0.20 | plus: t -%}
+          {%- if t > 80.0 -%}true{%- else -%}false{%- endif -%}
+
+  # --- Write: one scores document ------------------------------------------
+  - name: write_scores
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /cpmw-scores/_doc
+      body:
+        scored_at: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
+        forecast_horizon_hours: 24
+        clusters: "${{ steps.build_final.output }}"

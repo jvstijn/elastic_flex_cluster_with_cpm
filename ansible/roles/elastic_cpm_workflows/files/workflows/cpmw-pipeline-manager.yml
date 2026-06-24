@@ -1,0 +1,163 @@
+name: cpmw-pipeline-manager
+description: Render Logstash pipeline configs from desired state and push them to central management. Native port of the cpm-pipeline-manager watcher (data.map + Liquid replace + foreach, no Painless; the workflow JSON-encodes the config, so no manual escaping).
+enabled: true
+triggers:
+  # Manual-only by default (matches the watcher's effectively-disabled cron).
+  - type: manual
+steps:
+  # --- Inputs --------------------------------------------------------------
+  - name: state
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /cpmw-pipeline-state/_search
+      body:
+        size: 500
+
+  - name: registry
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /cpmw-cluster-registry/_search
+      body:
+        size: 20
+        query:
+          term: { active: true }
+        _source: [cluster_id, cluster_uuid, cluster_name, ingest_hosts, dc]
+
+  - name: template_dedicated
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /cpmw-pipeline-templates/_search
+      body:
+        size: 1
+        query:
+          term: { _id: dedicated }
+
+  - name: template_catchall
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /cpmw-pipeline-templates/_search
+      body:
+        size: 1
+        query:
+          term: { _id: catchall }
+
+  # --- Flatten + split state by pipeline type ------------------------------
+  - name: state_flat
+    type: data.map
+    items: "${{ steps.state.output.hits.hits }}"
+    with:
+      fields:
+        pipeline_id: "{{ item._source.pipeline_id }}"
+        pipeline_type: "{{ item._source.pipeline_type }}"
+        cluster_id: "{{ item._source.cluster_id }}"
+        data_stream_type: "{{ item._source.data_stream_type }}"
+        dataset: "{{ item._source.dataset }}"
+        namespace: "{{ item._source.namespace }}"
+        topic: "{{ item._source.topic }}"
+
+  - name: dedicated_states
+    type: data.filter
+    items: "${{ steps.state_flat.output }}"
+    with:
+      condition: "item.pipeline_type: dedicated"
+
+  - name: catchall_states
+    type: data.filter
+    items: "${{ steps.state_flat.output }}"
+    with:
+      condition: "item.pipeline_type: catchall"
+
+  # --- DEDICATED pipelines (1 per state entry) -----------------------------
+  - name: dedicated_pipelines
+    type: data.map
+    items: "${{ steps.dedicated_states.output }}"
+    with:
+      fields:
+        pipeline_id: "{{ item.pipeline_id }}"
+        description: "CPM dedicated pipeline to {{ item.cluster_id }} ({{ item.dataset }})"
+        pipeline: >-
+          {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.cluster_id | first -%}
+          {%- assign tpl = steps.template_dedicated.output.hits.hits[0]._source -%}
+          {%- assign cname = item.cluster_id -%}{%- if reg and reg.cluster_name and reg.cluster_name != '' -%}{%- assign cname = reg.cluster_name -%}{%- endif -%}
+          {%- assign groupId = 'cpm-' | append: cname -%}
+          {%- assign hosts = reg.ingest_hosts | split: ',' -%}
+          {%- capture esHosts -%}{%- for h in hosts -%}"{{ h }}:9200"{%- unless forloop.last -%},{%- endunless -%}{%- endfor -%}{%- endcapture -%}
+          {%- assign apiKeyVar = 'ES_API_KEY_' | append: item.cluster_id | upcase | replace: '-', '_' -%}
+          {%- assign ct = tpl.consumer_threads | append: '' -%}
+          {{ tpl.template | replace: '__KAFKA_BOOTSTRAP__', tpl.kafka_bootstrap | replace: '__TOPIC__', item.topic | replace: '__PIPELINE_ID__', item.pipeline_id | replace: '__GROUP_ID__', groupId | replace: '__CONSUMER_THREADS__', ct | replace: '__ES_HOSTS__', esHosts | replace: '__DATA_STREAM_TYPE__', item.data_stream_type | replace: '__DATASET__', item.dataset | replace: '__NAMESPACE__', item.namespace | replace: '__API_KEY_VAR__', apiKeyVar }}
+
+  # --- CATCHALL pipelines (group topics per pipeline_id) -------------------
+  - name: catchall_pid_rows
+    type: data.map
+    items: "${{ steps.catchall_states.output }}"
+    with:
+      fields:
+        pipeline_id: "{{ item.pipeline_id }}"
+        cluster_id: "{{ item.cluster_id }}"
+
+  - name: catchall_pids
+    type: data.dedupe
+    items: "${{ steps.catchall_pid_rows.output }}"
+    with:
+      keys: [pipeline_id]
+
+  - name: catchall_pipelines
+    type: data.map
+    items: "${{ steps.catchall_pids.output }}"
+    with:
+      fields:
+        pipeline_id: "{{ item.pipeline_id }}"
+        description: >-
+          {%- assign mytopics = steps.catchall_states.output | where: 'pipeline_id', item.pipeline_id | map: 'topic' | uniq -%}
+          CPM catch-all pipeline for {{ item.cluster_id }} ({{ mytopics | size }} datasets)
+        pipeline: >-
+          {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.cluster_id | first -%}
+          {%- assign tpl = steps.template_catchall.output.hits.hits[0]._source -%}
+          {%- assign cname = item.cluster_id -%}{%- if reg and reg.cluster_name and reg.cluster_name != '' -%}{%- assign cname = reg.cluster_name -%}{%- endif -%}
+          {%- assign groupId = 'cpm-' | append: cname -%}
+          {%- assign hosts = reg.ingest_hosts | split: ',' -%}
+          {%- capture esHosts -%}{%- for h in hosts -%}"{{ h }}:9200"{%- unless forloop.last -%},{%- endunless -%}{%- endfor -%}{%- endcapture -%}
+          {%- assign apiKeyVar = 'ES_API_KEY_' | append: item.cluster_id | upcase | replace: '-', '_' -%}
+          {%- assign ct = tpl.consumer_threads | append: '' -%}
+          {%- assign mytopics = steps.catchall_states.output | where: 'pipeline_id', item.pipeline_id | map: 'topic' | uniq -%}
+          {%- capture topicsList -%}{%- for t in mytopics -%}"{{ t }}"{%- unless forloop.last -%}, {%- endunless -%}{%- endfor -%}{%- endcapture -%}
+          {{ tpl.template | replace: '__KAFKA_BOOTSTRAP__', tpl.kafka_bootstrap | replace: '__TOPICS_LIST__', topicsList | replace: '__CLUSTER_ID__', item.cluster_id | replace: '__GROUP_ID__', groupId | replace: '__CONSUMER_THREADS__', ct | replace: '__ES_HOSTS__', esHosts | replace: '__API_KEY_VAR__', apiKeyVar }}
+
+  # --- Push pipelines to Logstash central management -----------------------
+  - name: push_dedicated
+    type: foreach
+    foreach: "${{ steps.dedicated_pipelines.output }}"
+    steps:
+      - name: put_dedicated_pipeline
+        type: elasticsearch.request
+        with:
+          method: PUT
+          path: "/_logstash/pipeline/{{ foreach.item.pipeline_id }}"
+          body:
+            description: "${{ foreach.item.description }}"
+            last_modified: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
+            pipeline_metadata: { type: logstash_pipeline, version: 1 }
+            pipeline: "${{ foreach.item.pipeline }}"
+            pipeline_settings: "${{ steps.template_dedicated.output.hits.hits[0]._source.pipeline_settings }}"
+            username: cpm
+
+  - name: push_catchall
+    type: foreach
+    foreach: "${{ steps.catchall_pipelines.output }}"
+    steps:
+      - name: put_catchall_pipeline
+        type: elasticsearch.request
+        with:
+          method: PUT
+          path: "/_logstash/pipeline/{{ foreach.item.pipeline_id }}"
+          body:
+            description: "${{ foreach.item.description }}"
+            last_modified: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
+            pipeline_metadata: { type: logstash_pipeline, version: 1 }
+            pipeline: "${{ foreach.item.pipeline }}"
+            pipeline_settings: "${{ steps.template_catchall.output.hits.hits[0]._source.pipeline_settings }}"
+            username: cpm

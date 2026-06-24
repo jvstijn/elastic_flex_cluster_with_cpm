@@ -1,0 +1,24 @@
+---
+# ===========================================================================
+# Variabelen voor de role 'elastic_cpm_workflows'.
+# De workflows draaien IN Kibana en praten met Elasticsearch via de
+# workflow-engine zelf (geen webhook / api-key nodig zoals bij de watchers).
+# De ES-variabelen (elastic_usr/elastic_pw/es_central_port/elastic_base_url)
+# komen uit group_vars/all.yml, gedeeld met de role 'elastic_cpm'.
+# ===========================================================================
+
+# --- Kibana-verbinding voor het pushen van workflows -----------------------
+# Kibana publiceert http op de host-poort uit .env (KIBANA_PORT).
+kibana_scheme: http
+kibana_host: localhost
+kibana_port: "{{ lookup('ini', 'KIBANA_PORT type=properties file=' ~ playbook_dir ~ '/../.env') }}"
+kibana_base_url: "{{ kibana_scheme }}://{{ kibana_host }}:{{ kibana_port }}"
+
+# --- CPMW indices die de role aanmaakt -------------------------------------
+cpmw_indices:
+  - { name: "cpmw-cluster-registry", file: "json/index_cpmw-cluster-registry.json" }
+  - { name: "cpmw-scores",           file: "json/index_cpmw-scores.json" }
+
+cpmw_pipeline_templates:
+  - { id: "catchall",  file: "json/cpmw-pipeline-template-catchall.json" }
+  - { id: "dedicated", file: "json/cpmw-pipeline-template-dedicated.json" }

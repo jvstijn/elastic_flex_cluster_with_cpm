@@ -1,0 +1,16 @@
+.env
+
+# Generated TLS material (setup-certs.sh output if copied to host)
+certs/
+*.crt
+*.pem
+*.key
+ca.zip
+certs.zip
+
+# macOS cruft
+.DS_Store
+
+# Local archives
+ansible.tar.gz
+ansible.zip

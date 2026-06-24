@@ -1,0 +1,144 @@
+name: cpmw-register-sync
+description: Build the CPM cluster registry from monitoring data. Native port of the cpm-register-sync watcher (ES aggregations + data.map + foreach, no Painless).
+enabled: true
+triggers:
+  - type: scheduled
+    with:
+      rrule:
+        freq: DAILY
+        interval: 1
+        tzid: UTC
+        byhour: [0]
+        byminute: [0]
+steps:
+  # --- Inputs --------------------------------------------------------------
+  - name: existing_registry
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /cpmw-cluster-registry/_search
+      body:
+        size: 100
+
+  - name: monitoring_clusters
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: "/monitoring:.monitoring-es-8-*/_search"
+      body:
+        size: 0
+        query:
+          bool:
+            filter:
+              - match_phrase: { event.dataset: elasticsearch.cluster.stats }
+              - range: { "@timestamp": { gte: now-1d } }
+        aggs:
+          by_cluster:
+            terms: { field: elasticsearch.cluster.id, size: 20 }
+            aggs:
+              cluster_name:
+                terms: { field: elasticsearch.cluster.name, size: 1 }
+
+  - name: node_capacity
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: "/monitoring:.monitoring-es-8-*/_search"
+      body:
+        size: 0
+        query:
+          bool:
+            filter:
+              - match_phrase: { event.dataset: elasticsearch.node.stats }
+              - range: { "@timestamp": { gte: now-1d } }
+              - terms: { elasticsearch.node.roles: [data, data_content, data_hot, data_cold, data_warm] }
+        aggs:
+          by_cluster:
+            terms: { field: elasticsearch.cluster.id, size: 20 }
+            aggs:
+              by_node:
+                terms: { field: elasticsearch.node.id, size: 200 }
+                aggs:
+                  disk_total: { max: { field: elasticsearch.node.stats.fs.summary.total.bytes } }
+                  heap_max: { max: { field: elasticsearch.node.stats.jvm.mem.heap.max.bytes } }
+              total_disk: { sum_bucket: { buckets_path: "by_node>disk_total" } }
+              total_heap: { sum_bucket: { buckets_path: "by_node>heap_max" } }
+
+  - name: ingest_nodes
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: "/monitoring:.monitoring-es-8-*/_search"
+      body:
+        size: 0
+        query:
+          bool:
+            filter:
+              - match_phrase: { event.dataset: elasticsearch.node.stats }
+              - range: { "@timestamp": { gte: now-1d } }
+              - terms: { elasticsearch.node.roles: [ingest] }
+        aggs:
+          by_cluster:
+            terms: { field: elasticsearch.cluster.id, size: 20 }
+            aggs:
+              by_node:
+                terms: { field: elasticsearch.node.id, size: 200 }
+                aggs:
+                  hostname:
+                    terms: { field: host.name, size: 1 }
+
+  # --- Transform: one registry doc per monitored cluster -------------------
+  - name: build_clusters
+    type: data.map
+    items: "${{ steps.monitoring_clusters.output.aggregations.by_cluster.buckets }}"
+    with:
+      fields:
+        cluster_uuid: "{{ item.key }}"
+        cluster_id: >-
+          {%- assign ex = steps.existing_registry.output.hits.hits | map: '_source' | where: 'cluster_uuid', item.key | first -%}
+          {%- if ex and ex.cluster_id -%}{{ ex.cluster_id }}{%- else -%}{{ item.key }}{%- endif -%}
+        cluster_name: >-
+          {%- assign ex = steps.existing_registry.output.hits.hits | map: '_source' | where: 'cluster_uuid', item.key | first -%}
+          {%- if ex and ex.cluster_name -%}{{ ex.cluster_name }}{%- else -%}{{ item.cluster_name.buckets[0].key }}{%- endif -%}
+        disk_total_bytes: >-
+          {%- assign cap = steps.node_capacity.output.aggregations.by_cluster.buckets | where: 'key', item.key | first -%}
+          {%- if cap and cap.total_disk.value -%}{{ cap.total_disk.value | times: 85.0 | divided_by: 100.0 | round: 0 }}{%- else -%}0{%- endif -%}
+        heap_max_bytes: >-
+          {%- assign cap = steps.node_capacity.output.aggregations.by_cluster.buckets | where: 'key', item.key | first -%}
+          {%- if cap and cap.total_heap.value -%}{{ cap.total_heap.value | round: 0 }}{%- else -%}0{%- endif -%}
+        node_count: >-
+          {%- assign cap = steps.node_capacity.output.aggregations.by_cluster.buckets | where: 'key', item.key | first -%}
+          {%- if cap -%}{{ cap.by_node.buckets | size }}{%- else -%}0{%- endif -%}
+        shard_max_threshold: >-
+          {%- assign cap = steps.node_capacity.output.aggregations.by_cluster.buckets | where: 'key', item.key | first -%}
+          {%- assign heap = 0 -%}{%- if cap and cap.total_heap.value -%}{%- assign heap = cap.total_heap.value -%}{%- endif -%}
+          {%- if heap > 0 -%}{{ heap | divided_by: 1073741824.0 | times: 20.0 | round: 0 }}{%- else -%}1000{%- endif -%}
+        write_queue_threshold: "200"
+        ingest_hosts: >-
+          {%- assign ing = steps.ingest_nodes.output.aggregations.by_cluster.buckets | where: 'key', item.key | first -%}
+          {%- if ing -%}{%- for n in ing.by_node.buckets -%}{{ n.hostname.buckets[0].key }}{%- unless forloop.last -%},{%- endunless -%}{%- endfor -%}{%- endif -%}
+        active: >-
+          {%- assign ex = steps.existing_registry.output.hits.hits | map: '_source' | where: 'cluster_uuid', item.key | first -%}
+          {%- if ex -%}{{ ex.active }}{%- else -%}true{%- endif -%}
+
+  # --- Write: upsert each cluster doc --------------------------------------
+  - name: upsert_registry
+    type: foreach
+    foreach: "${{ steps.build_clusters.output }}"
+    steps:
+      - name: put_doc
+        type: elasticsearch.request
+        with:
+          method: PUT
+          path: "/cpmw-cluster-registry/_doc/{{ foreach.item.cluster_uuid }}"
+          body:
+            cluster_uuid: "${{ foreach.item.cluster_uuid }}"
+            cluster_id: "${{ foreach.item.cluster_id }}"
+            cluster_name: "${{ foreach.item.cluster_name }}"
+            disk_total_bytes: "${{ foreach.item.disk_total_bytes }}"
+            heap_max_bytes: "${{ foreach.item.heap_max_bytes }}"
+            node_count: "${{ foreach.item.node_count }}"
+            shard_max_threshold: "${{ foreach.item.shard_max_threshold }}"
+            write_queue_threshold: "${{ foreach.item.write_queue_threshold }}"
+            ingest_hosts: "${{ foreach.item.ingest_hosts }}"
+            active: "${{ foreach.item.active }}"

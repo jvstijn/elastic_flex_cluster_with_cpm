@@ -1,0 +1,13 @@
+{
+  "name": "dedicated",
+  "description": "Template for per-dataset Logstash pipelines managed by CPM",
+  "kafka_bootstrap": "kafka:9092",
+  "consumer_threads": 1,
+  "pipeline_settings": {
+    "pipeline.workers": 4,
+    "pipeline.batch.size": 125,
+    "queue.type": "persisted",
+    "queue.max_bytes": "1gb"
+  },
+  "template": "input {\r\n  kafka {\r\n    bootstrap_servers => \"__KAFKA_BOOTSTRAP__\"\r\n    topics => [\"__TOPIC__\"]\r\n    group_id => \"__GROUP_ID__\"\r\n    consumer_threads => __CONSUMER_THREADS__\r\n    codec => json\r\n    decorate_events => true\r\n  }\r\n}\r\n\r\noutput {\r\n  elasticsearch {\r\n    hosts => [__ES_HOSTS__]\r\n    data_stream => true\r\n    data_stream_type => \"logs\"\r\n    data_stream_dataset => \"__DATASET__\"\r\n    data_stream_namespace => \"__NAMESPACE__\"\r\n    api_key => \"${__API_KEY_VAR__}\"\r\n    ssl_certificate_verification => true\r\n  }\r\n}"
+}

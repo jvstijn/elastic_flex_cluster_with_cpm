@@ -1,0 +1,96 @@
+name: cpmw-routing-advisor
+description: Suggest data-stream moves from heavy to light clusters (two-phase bin-packing). Port of the cpm-routing-advisor watcher; the assignment algorithm runs as a scripted_metric (minimal Painless) over null-free params, output written via foreach.
+enabled: true
+triggers:
+- type: scheduled
+  with:
+    rrule:
+      freq: DAILY
+      interval: 1
+      tzid: UTC
+      byhour:
+      - 0
+      byminute:
+      - 10
+steps:
+- name: scores
+  type: elasticsearch.request
+  with:
+    method: POST
+    path: /cpmw-scores/_search
+    body:
+      size: 1
+      sort:
+      - scored_at: desc
+- name: index_rates
+  type: elasticsearch.request
+  with:
+    method: POST
+    path: /.monitoring-es-8-*/_search
+    body:
+      size: 0
+      query:
+        bool:
+          filter:
+          - match_phrase:
+              event.dataset: elasticsearch.index
+          - range:
+              '@timestamp':
+                gte: now-2h
+          - bool:
+              should:
+              - wildcard:
+                  elasticsearch.index.name: .ds-logs-*
+              - wildcard:
+                  elasticsearch.index.name: .ds-metrics-*
+              - wildcard:
+                  elasticsearch.index.name: .ds-traces-*
+              minimum_should_match: 1
+      aggs:
+        by_cluster:
+          terms:
+            field: elasticsearch.cluster.id
+            size: 10
+          aggs:
+            by_index:
+              terms:
+                field: elasticsearch.index.name
+                size: 500
+              aggs:
+                over_time:
+                  date_histogram:
+                    field: '@timestamp'
+                    fixed_interval: 1h
+                    min_doc_count: 1
+                  aggs:
+                    max_total:
+                      max:
+                        field: elasticsearch.index.total.indexing.index_total
+- name: compute
+  type: elasticsearch.request
+  with:
+    method: POST
+    path: /cpmw-scores/_search
+    body:
+      size: 0
+      aggs:
+        suggestions:
+          scripted_metric:
+            params:
+              scores: ${{ steps.scores.output.hits.hits[0]._source.clusters }}
+              index_rates: ${{ steps.index_rates.output.aggregations.by_cluster.buckets }}
+              now: '{{ now | date: ''%Y-%m-%dT%H:%M:%S.%LZ'' }}'
+            init_script: state.x = 0;
+            map_script: state.x += 1;
+            combine_script: return null;
+            reduce_script: "// Build cluster score map from latest scoring run\nMap scoreMap = new HashMap();\ndef sc = params.scores;\nif (sc != null) {\n  if (!sc.isEmpty()) {\n    for (def c : sc) {\n      Map m = new HashMap();\n      m.put('total_score', Double.parseDouble(c['total_score'].toString()));\n      m.put('cluster_id',  c['cluster_id']);\n      scoreMap.put((String)c['cluster_uuid'], m);\n    }\n  }\n}\n\n// Build per-cluster per-dataset ingest rates from monitoring\nMap clusterRates = new HashMap();\nfor (def cb : params.index_rates) {\n  String uuid = (String)cb['key'];\n  Map dRates  = new HashMap();\n  for (def ib : cb['by_index']['buckets']) {\n    String iname = (String)ib['key'];\n    if (!iname.startsWith('.ds-')) continue;\n    String afterDs = iname.substring(4);\n    if (!afterDs.startsWith('logs-') && !afterDs.startsWith('metrics-') && !afterDs.startsWith('traces-')) continue;\n    String idx = afterDs;\n    int p = idx.lastIndexOf('-'); if (p <= 0) continue;\n    idx = idx.substring(0, p);\n    p   = idx.lastIndexOf('-');  if (p <= 0) continue;\n    idx = idx.substring(0, p);\n    int fd = idx.indexOf('-');   if (fd <= 0) continue;\n    String streamType = idx.substring(0, fd);\n    if (!streamType.equals('logs') && !streamType.equals('metrics') && !streamType.equals('traces')) continue;\n    String rest = idx.substring(fd + 1);\n    int nd = rest.lastIndexOf('-'); if (nd <= 0) continue;\n    String dataset   = rest.substring(0, nd);\n    String namespace = rest.substring(nd + 1);\n    String key = streamType + '|' + dataset + '|' + namespace;\n    long delta = 0L;\n    def tb = ib['over_time']['buckets'];\n    if (tb.size() >= 2) {\n      def v0 = tb.get(0)['max_total']['value'];\n      def v1 = tb.get(tb.size() - 1)['max_total']['value'];\n      if (v0 != null && v1 != null) {\n        double diff = ((Number)v1).doubleValue() - ((Number)v0).doubleValue();\n        if (diff > 0.0) delta = (long)diff;\n      }\n    }\n    long prev = dRates.containsKey(key) ? ((Number)dRates.get(key)).longValue() : 0L;\n    dRates.put(key, prev + delta);\n  }\n  clusterRates.put(uuid, dRates);\n}\n\n// Collect ALL data stream rates into a flat list with source cluster info\nList allStreams = new ArrayList();\nfor (def entry : clusterRates.entrySet()) {\n  String uuid = (String)entry.getKey();\n  Map dRates = (Map)entry.getValue();\n  for (def re : dRates.entrySet()) {\n    String key = (String)re.getKey();\n    long rate = ((Number)re.getValue()).longValue();\n    if (rate <= 0L) continue;\n    int p1 = key.indexOf('|');\n    String streamType = 'logs';\n    String dataset = key;\n    String namespace = 'default';\n    if (p1 > 0) {\n      streamType = key.substring(0, p1);\n      int p2 = key.indexOf('|', p1 + 1);\n      if (p2 > 0) {\n        dataset = key.substring(p1 + 1, p2);\n        namespace = key.substring(p2 + 1);\n      }\n    }\n    Map s = new HashMap();\n    s.put('key', key);\n    s.put('data_stream_type', streamType);\n    s.put('dataset', dataset);\n    s.put('namespace', namespace);\n    s.put('rate', rate);\n    s.put('source_uuid', uuid);\n    allStreams.add(s);\n  }\n}\n\n// Sort streams by rate descending and take top N\nint N = scoreMap.size();\nint streamCount = allStreams.size();\nfor (int i = 0; i < streamCount - 1; i++) {\n  for (int j = i + 1; j < streamCount; j++) {\n    long rj = ((Number)allStreams.get(j).get('rate')).longValue();\n    long ri = ((Number)allStreams.get(i).get('rate')).longValue();\n    if (rj > ri) {\n      Map tmp = allStreams.get(i);\n      allStreams.set(i, allStreams.get(j));\n      allStreams.set(j, tmp);\n    }\n  }\n}\nint topN = N < streamCount ? N : streamCount;\nList topStreams = new ArrayList();\nfor (int i = 0; i < topN; i++) {\n  topStreams.add(allStreams.get(i));\n}\n\n// Sort clusters by score ascending (lightest first)\nList clusterList = new ArrayList();\nfor (def entry : scoreMap.entrySet()) {\n  Map m = new HashMap();\n  m.put('uuid', entry.getKey());\n  m.put('cluster_id', ((Map)entry.getValue()).get('cluster_id'));\n  m.put('score', ((Number)((Map)entry.getValue()).get('total_score')).doubleValue());\n  clusterList.add(m);\n}\nint clusterCount = clusterList.size();\nfor (int i = 0; i < clusterCount - 1; i++) {\n  for (int j = i + 1; j < clusterCount; j++) {\n    double sj = ((Number)clusterList.get(j).get('score')).doubleValue();\n    double si = ((Number)clusterList.get(i).get('score')).doubleValue();\n    if (sj < si) {\n      Map tmp = clusterList.get(i);\n      clusterList.set(i, clusterList.get(j));\n      clusterList.set(j, tmp);\n    }\n  }\n}\n\n// Phase 1: Greedy assignment\nList suggestions = new ArrayList();\nSet usedTargets = new HashSet();\nMap vacatingMap = new HashMap();\nList skippedList = new ArrayList();\n\nfor (int i = 0; i < topStreams.size(); i++) {\n  Map stream = (Map)topStreams.get(i);\n  String sourceUuid = (String)stream.get('source_uuid');\n  long streamRate = ((Number)stream.get('rate')).longValue();\n\n  // Find the lightest cluster that hasn't been used as a target yet\n  Map bestTarget = null;\n  for (def cl : clusterList) {\n    String tgtUuid = (String)cl.get('uuid');\n    if (usedTargets.contains(tgtUuid)) continue;\n    bestTarget = cl;\n    break;\n  }\n  if (bestTarget == null) break;\n\n  String tgtUuid = (String)bestTarget.get('uuid');\n  double tgtScore = ((Number)bestTarget.get('score')).doubleValue();\n  double srcScore = ((Number)((Map)scoreMap.get(sourceUuid)).get('total_score')).doubleValue();\n\n  // Source same as target: skip for Phase 2\n  if (sourceUuid.equals(tgtUuid)) {\n    Map skip = new HashMap();\n    skip.put('stream', stream);\n    skip.put('target_uuid', tgtUuid);\n    skip.put('target_score', tgtScore);\n    skip.put('source_score', srcScore);\n    skippedList.add(skip);\n    usedTargets.add(tgtUuid);\n    continue;\n  }\n\n  // Target lighter than source: create suggestion\n  if (tgtScore < srcScore) {\n    usedTargets.add(tgtUuid);\n    // Track that source cluster is vacating this rate\n    long prevVacating = vacatingMap.containsKey(sourceUuid) ? ((Number)vacatingMap.get(sourceUuid)).longValue() : 0L;\n    vacatingMap.put(sourceUuid, prevVacating + streamRate);\n\n    String sourceId = (String)((Map)scoreMap.get(sourceUuid)).get('cluster_id');\n    String tgtId = (String)bestTarget.get('cluster_id');\n\n    Map sug = new HashMap();\n    sug.put('data_stream_type',      stream.get('data_stream_type'));\n    sug.put('dataset',               stream.get('dataset'));\n    sug.put('namespace',             stream.get('namespace'));\n    sug.put('source_cluster',        sourceUuid);\n    sug.put('source_cluster_id',     sourceId);\n    sug.put('suggested_cluster_id',  tgtId);\n    sug.put('source_score',          srcScore);\n    sug.put('target_score',          tgtScore);\n    sug.put('event_rate_1h',         streamRate);\n    sug.put('reason',                'Move ' + stream.get('data_stream_type') + '-' + stream.get('dataset') + '-' + stream.get('namespace') + ' (' + streamRate + ' evt/hr) from ' + sourceId + ' (score: ' + (int)srcScore + ') to ' + tgtId + ' (score: ' + (int)tgtScore + ').');\n    suggestions.add(sug);\n  } else {\n    // Target heavier: skip for Phase 2\n    Map skip = new HashMap();\n    skip.put('stream', stream);\n    skip.put('target_uuid', tgtUuid);\n    skip.put('target_score', tgtScore);\n    skip.put('source_score', srcScore);\n    skippedList.add(skip);\n    usedTargets.add(tgtUuid);\n  }\n}\n\n// Phase 2: Paired swaps and local dedicated\nfor (def skip : skippedList) {\n  Map stream = (Map)skip.get('stream');\n  String sourceUuid = (String)stream.get('source_uuid');\n  String tgtUuid = (String)skip.get('target_uuid');\n  long streamRate = ((Number)stream.get('rate')).longValue();\n  double tgtScore = ((Number)skip.get('target_score')).doubleValue();\n  double srcScore = ((Number)skip.get('source_score')).doubleValue();\n\n  // Source same as target: local dedicated pipeline\n  if (sourceUuid.equals(tgtUuid)) {\n    String sourceId = (String)((Map)scoreMap.get(sourceUuid)).get('cluster_id');\n    Map sug = new HashMap();\n    sug.put('data_stream_type',      stream.get('data_stream_type'));\n    sug.put('dataset',               stream.get('dataset'));\n    sug.put('namespace',             stream.get('namespace'));\n    sug.put('source_cluster',        sourceUuid);\n    sug.put('source_cluster_id',     sourceId);\n    sug.put('suggested_cluster_id',  sourceId);\n    sug.put('source_score',          srcScore);\n    sug.put('target_score',          srcScore);\n    sug.put('event_rate_1h',         streamRate);\n    sug.put('reason',                'Local dedicated pipeline for ' + stream.get('data_stream_type') + '-' + stream.get('dataset') + '-' + stream.get('namespace') + ' (' + streamRate + ' evt/hr) on ' + sourceId + '.');\n    suggestions.add(sug);\n    continue;\n  }\n\n  // Target heavier: check paired swap\n  if (vacatingMap.containsKey(tgtUuid)) {\n    long vacatingRate = ((Number)vacatingMap.get(tgtUuid)).longValue();\n    if (vacatingRate > streamRate) {\n      // Safe swap: target is losing more rate than this dataset would add\n      String sourceId = (String)((Map)scoreMap.get(sourceUuid)).get('cluster_id');\n      String tgtId = tgtUuid;\n      for (def cl : clusterList) {\n        if (((String)cl.get('uuid')).equals(tgtUuid)) {\n          tgtId = (String)cl.get('cluster_id');\n          break;\n        }\n      }\n\n      Map sug = new HashMap();\n      sug.put('data_stream_type',      stream.get('data_stream_type'));\n      sug.put('dataset',               stream.get('dataset'));\n      sug.put('namespace',             stream.get('namespace'));\n      sug.put('source_cluster',        sourceUuid);\n      sug.put('source_cluster_id',     sourceId);\n      sug.put('suggested_cluster_id',  tgtId);\n      sug.put('source_score',          srcScore);\n      sug.put('target_score',          tgtScore);\n      sug.put('event_rate_1h',         streamRate);\n      sug.put('reason',                'Swap ' + stream.get('data_stream_type') + '-' + stream.get('dataset') + '-' + stream.get('namespace') + ' (' + streamRate + ' evt/hr) from ' + sourceId + ' (score: ' + (int)srcScore + ') to ' + tgtId + ' (score: ' + (int)tgtScore + ', vacating ' + vacatingRate + ' evt/hr).');\n      suggestions.add(sug);\n    }\n  }\n}\n\nString ts = params.now;\nfor (def sug : suggestions) {\n  sug.put('suggested_at', ts);\n  sug.put('clusters_total', N);\n}\n\nreturn suggestions;"
+- name: write_suggestions
+  type: foreach
+  foreach: ${{ steps.compute.output.aggregations.suggestions.value }}
+  steps:
+  - name: put_suggestion
+    type: elasticsearch.request
+    with:
+      method: PUT
+      path: /cpmw-routing-suggestions/_doc/{{ foreach.item.data_stream_type }}-{{ foreach.item.dataset }}-{{ foreach.item.namespace }}
+      body: ${{ foreach.item }}

@@ -1,0 +1,285 @@
+name: cpmw-state-manager
+description: Compute desired pipeline state (which dataset to which cluster/pipeline). Native port of the cpm-state-manager watcher (ES aggregations + data.map/dedupe/filter + foreach, no Painless).
+enabled: true
+triggers:
+  - type: scheduled
+    with:
+      rrule:
+        freq: DAILY
+        interval: 1
+        tzid: UTC
+        byhour: [0]
+        byminute: [15]
+steps:
+  # --- Inputs --------------------------------------------------------------
+  - name: routing_suggestions
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /cpmw-routing-suggestions/_search
+      body:
+        size: 10
+        sort: [{ suggested_at: { order: desc } }]
+        _source: [data_stream_type, dataset, namespace, suggested_cluster_id, source_score, target_score, event_rate_1h, suggested_at]
+
+  - name: registry
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /cpmw-cluster-registry/_search
+      body:
+        size: 20
+        query:
+          term: { active: true }
+        _source: [cluster_id, cluster_uuid, cluster_name, ingest_hosts, dc]
+
+  - name: existing_state
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /cpmw-pipeline-state/_search
+      body:
+        size: 500
+
+  - name: monitoring_streams
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: "/.monitoring-es-8-*/_search"
+      body:
+        size: 0
+        query:
+          bool:
+            filter:
+              - match_phrase: { event.dataset: elasticsearch.index }
+              - range: { "@timestamp": { gte: now-2h } }
+              - bool:
+                  should:
+                    - wildcard: { elasticsearch.index.name: ".ds-logs-*" }
+                    - wildcard: { elasticsearch.index.name: ".ds-metrics-*" }
+                    - wildcard: { elasticsearch.index.name: ".ds-traces-*" }
+                  minimum_should_match: 1
+        aggs:
+          streams:
+            composite:
+              size: 1000
+              sources:
+                - cluster: { terms: { field: cluster_uuid } }
+                - index: { terms: { field: elasticsearch.index.name } }
+
+  # === DEDICATED pipelines (from routing suggestions) ======================
+  - name: sug_flat
+    type: data.map
+    items: "${{ steps.routing_suggestions.output.hits.hits }}"
+    with:
+      fields:
+        data_stream_type: "{%- if item._source.data_stream_type -%}{{ item._source.data_stream_type }}{%- else -%}logs{%- endif -%}"
+        dataset: "{{ item._source.dataset }}"
+        namespace: "{%- if item._source.namespace -%}{{ item._source.namespace }}{%- else -%}default{%- endif -%}"
+        suggested_cluster_id: "{{ item._source.suggested_cluster_id }}"
+
+  - name: sug_dedup
+    type: data.dedupe
+    items: "${{ steps.sug_flat.output }}"
+    with:
+      keys: [suggested_cluster_id]
+
+  - name: dedicated_pre
+    type: data.map
+    items: "${{ steps.sug_dedup.output }}"
+    with:
+      fields:
+        data_stream_type: "{{ item.data_stream_type }}"
+        dataset: "{{ item.dataset }}"
+        namespace: "{{ item.namespace }}"
+        pipeline_type: "dedicated"
+        cluster_id: "{{ item.suggested_cluster_id }}"
+        dc: >-
+          {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.suggested_cluster_id | first -%}
+          {%- if reg and reg.dc and reg.dc != '' -%}{{ reg.dc }}{%- else -%}default{%- endif -%}
+        topic: "{{ item.data_stream_type }}-{{ item.dataset }}-{{ item.namespace }}"
+        pipeline_id: >-
+          {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.suggested_cluster_id | first -%}
+          {%- assign dc = 'default' -%}{%- if reg and reg.dc and reg.dc != '' -%}{%- assign dc = reg.dc -%}{%- endif -%}
+          {{ dc }}_cpm-dedicated-{{ item.suggested_cluster_id }}
+        updated_at: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
+        _valid: >-
+          {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.suggested_cluster_id | first -%}
+          {%- if reg -%}yes{%- else -%}no{%- endif -%}
+
+  - name: dedicated
+    type: data.filter
+    items: "${{ steps.dedicated_pre.output }}"
+    with:
+      condition: "item._valid: yes"
+
+  # === CATCHALL from existing state ========================================
+  - name: existing_pairs_pre
+    type: data.map
+    items: "${{ steps.existing_state.output.hits.hits }}"
+    with:
+      fields:
+        cluster_id: "{{ item._source.cluster_id }}"
+        topic: >-
+          {%- assign t = item._source.topic -%}
+          {%- assign p5 = t | slice: 0,5 -%}{%- assign p8 = t | slice: 0,8 -%}{%- assign p7 = t | slice: 0,7 -%}
+          {%- if p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' -%}{{ t }}{%- else -%}{{ item._source.data_stream_type }}-{{ item._source.dataset }}-{{ item._source.namespace }}{%- endif -%}
+        _keep: >-
+          {%- assign managed = steps.dedicated.output | map: 'topic' -%}
+          {%- assign t = item._source.topic -%}
+          {%- assign p5 = t | slice: 0,5 -%}{%- assign p8 = t | slice: 0,8 -%}{%- assign p7 = t | slice: 0,7 -%}
+          {%- unless p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' -%}{%- assign t = item._source.data_stream_type | append: '-' | append: item._source.dataset | append: '-' | append: item._source.namespace -%}{%- endunless -%}
+          {%- if item._source.pipeline_type == 'dedicated' -%}no{%- elsif item._source.data_stream_type == nil -%}no{%- elsif managed contains t -%}no{%- else -%}yes{%- endif -%}
+
+  - name: existing_pairs
+    type: data.filter
+    items: "${{ steps.existing_pairs_pre.output }}"
+    with:
+      condition: "item._keep: yes"
+
+  - name: existing_entries
+    type: data.map
+    items: "${{ steps.existing_pairs.output }}"
+    with:
+      fields:
+        data_stream_type: >-
+          {%- assign t = item.topic -%}{%- assign p5 = t | slice: 0,5 -%}{%- assign p8 = t | slice: 0,8 -%}{%- assign p7 = t | slice: 0,7 -%}
+          {%- if p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' -%}{{ t | split: '-' | first }}{%- else -%}logs{%- endif -%}
+        dataset: >-
+          {%- assign t = item.topic -%}{%- assign p5 = t | slice: 0,5 -%}{%- assign p8 = t | slice: 0,8 -%}{%- assign p7 = t | slice: 0,7 -%}
+          {%- assign parts = t | split: '-' -%}{%- assign n = parts.size -%}
+          {%- if p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' -%}{%- assign dc = n | minus: 2 -%}{{ parts | slice: 1, dc | join: '-' }}{%- else -%}{%- assign dc = n | minus: 1 -%}{{ parts | slice: 0, dc | join: '-' }}{%- endif -%}
+        namespace: "{{ item.topic | split: '-' | last }}"
+        pipeline_type: "catchall"
+        cluster_id: "{{ item.cluster_id }}"
+        dc: >-
+          {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.cluster_id | first -%}
+          {%- if reg and reg.dc and reg.dc != '' -%}{{ reg.dc }}{%- else -%}default{%- endif -%}
+        topic: "{{ item.topic }}"
+        pipeline_id: >-
+          {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.cluster_id | first -%}
+          {%- assign dc = 'default' -%}{%- if reg and reg.dc and reg.dc != '' -%}{%- assign dc = reg.dc -%}{%- endif -%}
+          {{ dc }}_cpm-catchall-{{ item.cluster_id }}
+        updated_at: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
+
+  # === CATCHALL discovered from monitoring =================================
+  - name: mon_pairs_pre
+    type: data.map
+    items: "${{ steps.monitoring_streams.output.aggregations.streams.buckets }}"
+    with:
+      fields:
+        cluster_uuid: "{{ item.key.cluster }}"
+        cluster_id: >-
+          {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_uuid', item.key.cluster | first -%}
+          {%- if reg -%}{{ reg.cluster_id }}{%- else -%}{%- endif -%}
+        topic: >-
+          {%- assign idx = item.key.index -%}{%- assign afterDs = idx | remove_first: '.ds-' -%}
+          {%- assign parts = afterDs | split: '-' -%}{%- assign n = parts.size -%}{%- assign keep = n | minus: 2 -%}
+          {%- if keep >= 3 -%}{{ parts | slice: 0, keep | join: '-' }}{%- else -%}{%- endif -%}
+        _keep: >-
+          {%- assign managed = steps.dedicated.output | map: 'topic' -%}
+          {%- assign existing = steps.existing_pairs.output | map: 'topic' -%}
+          {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_uuid', item.key.cluster | first -%}
+          {%- assign idx = item.key.index -%}{%- assign afterDs = idx | remove_first: '.ds-' -%}
+          {%- assign parts = afterDs | split: '-' -%}{%- assign n = parts.size -%}{%- assign keep = n | minus: 2 -%}
+          {%- assign topic = '' -%}{%- if keep >= 3 -%}{%- assign topic = parts | slice: 0, keep | join: '-' -%}{%- endif -%}
+          {%- assign st = parts | first -%}
+          {%- if topic == '' -%}no{%- elsif reg == nil -%}no{%- elsif st != 'logs' and st != 'metrics' and st != 'traces' -%}no{%- elsif managed contains topic -%}no{%- elsif existing contains topic -%}no{%- else -%}yes{%- endif -%}
+
+  - name: mon_pairs_keep
+    type: data.filter
+    items: "${{ steps.mon_pairs_pre.output }}"
+    with:
+      condition: "item._keep: yes"
+
+  - name: mon_pairs
+    type: data.dedupe
+    items: "${{ steps.mon_pairs_keep.output }}"
+    with:
+      keys: [topic]
+
+  - name: mon_entries
+    type: data.map
+    items: "${{ steps.mon_pairs.output }}"
+    with:
+      fields:
+        data_stream_type: >-
+          {%- assign t = item.topic -%}{%- assign p5 = t | slice: 0,5 -%}{%- assign p8 = t | slice: 0,8 -%}{%- assign p7 = t | slice: 0,7 -%}
+          {%- if p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' -%}{{ t | split: '-' | first }}{%- else -%}logs{%- endif -%}
+        dataset: >-
+          {%- assign t = item.topic -%}{%- assign p5 = t | slice: 0,5 -%}{%- assign p8 = t | slice: 0,8 -%}{%- assign p7 = t | slice: 0,7 -%}
+          {%- assign parts = t | split: '-' -%}{%- assign n = parts.size -%}
+          {%- if p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' -%}{%- assign dc = n | minus: 2 -%}{{ parts | slice: 1, dc | join: '-' }}{%- else -%}{%- assign dc = n | minus: 1 -%}{{ parts | slice: 0, dc | join: '-' }}{%- endif -%}
+        namespace: "{{ item.topic | split: '-' | last }}"
+        pipeline_type: "catchall"
+        cluster_id: "{{ item.cluster_id }}"
+        dc: >-
+          {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.cluster_id | first -%}
+          {%- if reg and reg.dc and reg.dc != '' -%}{{ reg.dc }}{%- else -%}default{%- endif -%}
+        topic: "{{ item.topic }}"
+        pipeline_id: >-
+          {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.cluster_id | first -%}
+          {%- assign dc = 'default' -%}{%- if reg and reg.dc and reg.dc != '' -%}{%- assign dc = reg.dc -%}{%- endif -%}
+          {{ dc }}_cpm-catchall-{{ item.cluster_id }}
+        updated_at: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
+
+  # === Write all state entries ============================================
+  - name: write_dedicated
+    type: foreach
+    foreach: "${{ steps.dedicated.output }}"
+    steps:
+      - name: put_dedicated
+        type: elasticsearch.request
+        with:
+          method: PUT
+          path: "/cpmw-pipeline-state/_doc/{{ foreach.item.data_stream_type }}-{{ foreach.item.dataset }}-{{ foreach.item.namespace }}"
+          body:
+            data_stream_type: "${{ foreach.item.data_stream_type }}"
+            dataset: "${{ foreach.item.dataset }}"
+            namespace: "${{ foreach.item.namespace }}"
+            pipeline_type: "${{ foreach.item.pipeline_type }}"
+            pipeline_id: "${{ foreach.item.pipeline_id }}"
+            cluster_id: "${{ foreach.item.cluster_id }}"
+            dc: "${{ foreach.item.dc }}"
+            topic: "${{ foreach.item.topic }}"
+            updated_at: "${{ foreach.item.updated_at }}"
+
+  - name: write_existing_catchall
+    type: foreach
+    foreach: "${{ steps.existing_entries.output }}"
+    steps:
+      - name: put_existing
+        type: elasticsearch.request
+        with:
+          method: PUT
+          path: "/cpmw-pipeline-state/_doc/{{ foreach.item.data_stream_type }}-{{ foreach.item.dataset }}-{{ foreach.item.namespace }}"
+          body:
+            data_stream_type: "${{ foreach.item.data_stream_type }}"
+            dataset: "${{ foreach.item.dataset }}"
+            namespace: "${{ foreach.item.namespace }}"
+            pipeline_type: "${{ foreach.item.pipeline_type }}"
+            pipeline_id: "${{ foreach.item.pipeline_id }}"
+            cluster_id: "${{ foreach.item.cluster_id }}"
+            dc: "${{ foreach.item.dc }}"
+            topic: "${{ foreach.item.topic }}"
+            updated_at: "${{ foreach.item.updated_at }}"
+
+  - name: write_monitoring_catchall
+    type: foreach
+    foreach: "${{ steps.mon_entries.output }}"
+    steps:
+      - name: put_monitoring
+        type: elasticsearch.request
+        with:
+          method: PUT
+          path: "/cpmw-pipeline-state/_doc/{{ foreach.item.data_stream_type }}-{{ foreach.item.dataset }}-{{ foreach.item.namespace }}"
+          body:
+            data_stream_type: "${{ foreach.item.data_stream_type }}"
+            dataset: "${{ foreach.item.dataset }}"
+            namespace: "${{ foreach.item.namespace }}"
+            pipeline_type: "${{ foreach.item.pipeline_type }}"
+            pipeline_id: "${{ foreach.item.pipeline_id }}"
+            cluster_id: "${{ foreach.item.cluster_id }}"
+            dc: "${{ foreach.item.dc }}"
+            topic: "${{ foreach.item.topic }}"
+            updated_at: "${{ foreach.item.updated_at }}"

@@ -1,0 +1,108 @@
+---
+# ===========================================================================
+# Rolt de CPMW-indices, pipeline-templates en Elastic 9.4 Workflows uit.
+# Idempotent: bestaande cpmw-* workflows worden eerst verwijderd en daarna
+# opnieuw aangemaakt vanuit de YAML-bestanden in files/workflows/.
+# ===========================================================================
+
+- name: Create CPMW indices
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/{{ item.name }}"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body: "{{ lookup('file', item.file) }}"
+    status_code: [200, 201, 400]
+  loop: "{{ cpmw_indices }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Index CPMW pipeline templates
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpmw-pipeline-templates/_doc/{{ item.id }}"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body: "{{ lookup('file', item.file) }}"
+    status_code: [200, 201]
+  loop: "{{ cpmw_pipeline_templates }}"
+  loop_control:
+    label: "{{ item.id }}"
+
+- name: Find workflow definition files
+  ansible.builtin.find:
+    paths: "{{ role_path }}/files/workflows"
+    patterns: "*.yml"
+  register: cpmw_workflow_files
+  delegate_to: localhost
+
+- name: List existing workflows in Kibana
+  ansible.builtin.uri:
+    url: "{{ kibana_base_url }}/api/workflows?size=1000"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    headers:
+      kbn-xsrf: "true"
+    status_code: [200]
+  register: cpmw_existing_workflows
+
+- name: Bepaal bestaande cpmw-* workflow ids
+  ansible.builtin.set_fact:
+    cpmw_existing_ids: >-
+      {{ cpmw_existing_workflows.json.results
+         | selectattr('name', 'match', '^cpmw-')
+         | map(attribute='id') | list }}
+
+- name: Delete bestaande cpmw-* workflows (idempotente reset)
+  ansible.builtin.uri:
+    url: "{{ kibana_base_url }}/api/workflows"
+    method: DELETE
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    headers:
+      kbn-xsrf: "true"
+    body_format: json
+    body:
+      ids: "{{ cpmw_existing_ids }}"
+    status_code: [200]
+  when: cpmw_existing_ids | length > 0
+
+- name: Create CPMW workflows vanuit YAML-bestanden
+  ansible.builtin.uri:
+    url: "{{ kibana_base_url }}/api/workflows"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    headers:
+      kbn-xsrf: "true"
+    body_format: json
+    body:
+      workflows:
+        - yaml: "{{ lookup('file', item.path) }}"
+    status_code: [200]
+  loop: "{{ cpmw_workflow_files.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: cpmw_create_result
+
+- name: Toon aangemaakte workflows + validatiestatus
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.json.created[0].id }} (valid={{ item.json.created[0].valid }})
+  loop: "{{ cpmw_create_result.results }}"
+  loop_control:
+    label: "{{ item.json.created[0].id | default('?') }}"
+  when: cpmw_create_result is defined

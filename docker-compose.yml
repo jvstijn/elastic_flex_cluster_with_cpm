@@ -1,0 +1,369 @@
+name: dod-elastic
+
+services:
+  setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+      - ./setup/setup-certs.sh:/setup/setup-certs.sh:ro
+    user: "0"
+    env_file: .env
+    command: ["/bin/bash", "/setup/setup-certs.sh"]
+    networks:
+      - dod-elastic
+
+  es-central:
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+      - es-central-data:/usr/share/elasticsearch/data
+    ports:
+      - "${ES_CENTRAL_PORT}:9200"
+    env_file: .env
+    environment:
+      - node.name=es-central
+      - cluster.name=central-cluster
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/es-central/es-central.key
+      - xpack.security.http.ssl.certificate=certs/es-central/es-central.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/es-central/es-central.key
+      - xpack.security.transport.ssl.certificate=certs/es-central/es-central.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.security.remote_cluster_client.ssl.enabled=true
+      - xpack.security.remote_cluster_client.ssl.key=certs/es-central/es-central.key
+      - xpack.security.remote_cluster_client.ssl.certificate=certs/es-central/es-central.crt
+      - xpack.security.remote_cluster_client.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.remote_cluster_client.ssl.verification_mode=none
+      - xpack.http.ssl.verification_mode=none
+      - xpack.license.self_generated.type=${LICENSE}
+    # es-central runs ML + serves Kibana/Workflows; needs more than the shared
+    # MEM_LIMIT (1g) which caused repeated OOM (exit 137). Heap is 1g (Xmx above),
+    # so give the container 2g (~50% heap / 50% off-heap).
+    mem_limit: 2147483648
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    networks:
+      - dod-elastic
+
+  es-remote-a:
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+      - es-remote-a-data:/usr/share/elasticsearch/data
+    ports:
+      - "${ES_REMOTE_A_PORT}:9200"
+    env_file: .env
+    environment:
+      - node.name=es-remote-a
+      - cluster.name=remote-a
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms768m -Xmx768m
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/es-remote-a/es-remote-a.key
+      - xpack.security.http.ssl.certificate=certs/es-remote-a/es-remote-a.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/es-remote-a/es-remote-a.key
+      - xpack.security.transport.ssl.certificate=certs/es-remote-a/es-remote-a.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - remote_cluster_server.enabled=true
+      - remote_cluster.host=0.0.0.0
+      - xpack.security.remote_cluster_server.ssl.enabled=true
+      - xpack.security.remote_cluster_server.ssl.key=certs/es-remote-a/es-remote-a.key
+      - xpack.security.remote_cluster_server.ssl.certificate=certs/es-remote-a/es-remote-a.crt
+      - xpack.security.remote_cluster_server.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.remote_cluster_server.ssl.verification_mode=none
+      - xpack.license.self_generated.type=${LICENSE}
+    mem_limit: 2147483648
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    networks:
+      - dod-elastic
+
+  es-remote-b:
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+      - es-remote-b-data:/usr/share/elasticsearch/data
+    ports:
+      - "${ES_REMOTE_B_PORT}:9200"
+    env_file: .env
+    environment:
+      - node.name=es-remote-b
+      - cluster.name=remote-b
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/es-remote-b/es-remote-b.key
+      - xpack.security.http.ssl.certificate=certs/es-remote-b/es-remote-b.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/es-remote-b/es-remote-b.key
+      - xpack.security.transport.ssl.certificate=certs/es-remote-b/es-remote-b.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - remote_cluster_server.enabled=true
+      - remote_cluster.host=0.0.0.0
+      - xpack.security.remote_cluster_server.ssl.enabled=true
+      - xpack.security.remote_cluster_server.ssl.key=certs/es-remote-b/es-remote-b.key
+      - xpack.security.remote_cluster_server.ssl.certificate=certs/es-remote-b/es-remote-b.crt
+      - xpack.security.remote_cluster_server.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.remote_cluster_server.ssl.verification_mode=none
+      - xpack.license.self_generated.type=${LICENSE}
+    mem_limit: ${MEM_LIMIT}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    networks:
+      - dod-elastic
+
+  init:
+    depends_on:
+      es-central:
+        condition: service_healthy
+      es-remote-a:
+        condition: service_healthy
+      es-remote-b:
+        condition: service_healthy
+    image: docker:27-cli
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - certs:/certs:ro
+      - ./setup/init-stack.sh:/setup/init-stack.sh:ro
+      - init-state:/setup/state
+      - .:/workspace:ro
+    working_dir: /workspace
+    user: "0"
+    env_file: .env
+    environment:
+      - CA_CERT=/certs/ca/ca.crt
+      - COMPOSE_PROJECT_NAME=dod-elastic
+    command:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache bash curl
+        exec bash /setup/init-stack.sh
+    networks:
+      - dod-elastic
+    restart: "no"
+
+  kibana:
+    depends_on:
+      es-central:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/kibana/kibana:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/kibana/config/certs
+      - ./config/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+      - kibana-data:/usr/share/kibana/data
+    ports:
+      - "${KIBANA_PORT}:5601"
+    env_file: .env
+    environment:
+      - ELASTICSEARCH_HOSTS=https://es-central:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+      - KIBANA_PASSWORD=${KIBANA_PASSWORD}
+      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=config/certs/ca/ca.crt
+    mem_limit: ${MEM_LIMIT}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s -I http://localhost:5601 | grep -q 'HTTP/1.1 302 Found'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    networks:
+      - dod-elastic
+
+  kafka:
+    image: apache/kafka:3.9.0
+    ports:
+      - "${KAFKA_PORT}:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - dod-elastic
+
+  logstash-beats:
+    depends_on:
+      kafka:
+        condition: service_started
+      es-central:
+        condition: service_healthy
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/logstash/config/certs
+      - ./config/logstash-beats/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./config/logstash-beats/pipeline:/usr/share/logstash/pipeline:ro
+    ports:
+      - "${LOGSTASH_BEATS_PORT}:5044"
+    env_file: .env
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
+    mem_limit: ${MEM_LIMIT}
+    networks:
+      - dod-elastic
+
+  logstash-managed:
+    depends_on:
+      es-central:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/logstash/config/certs
+      - ./config/logstash-managed/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    env_file: .env
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    mem_limit: ${MEM_LIMIT}
+    networks:
+      - dod-elastic
+
+  metricbeat-central:
+    depends_on:
+      es-central:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/beats/metricbeat:${STACK_VERSION}
+    user: root
+    volumes:
+      - certs:/usr/share/metricbeat/config/certs
+      - ./config/metricbeat/metricbeat-central.yml:/usr/share/metricbeat/metricbeat.yml:ro
+    env_file: .env
+    environment:
+      - MONITORING_PASSWORD=${MONITORING_PASSWORD}
+    command: ["metricbeat", "-e", "--strict.perms=false"]
+    networks:
+      - dod-elastic
+
+  metricbeat-remote-a:
+    depends_on:
+      es-remote-a:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/beats/metricbeat:${STACK_VERSION}
+    user: root
+    volumes:
+      - certs:/usr/share/metricbeat/config/certs
+      - ./config/metricbeat/metricbeat-remote-a.yml:/usr/share/metricbeat/metricbeat.yml:ro
+    env_file: .env
+    environment:
+      - MONITORING_PASSWORD=${MONITORING_PASSWORD}
+    command: ["metricbeat", "-e", "--strict.perms=false"]
+    networks:
+      - dod-elastic
+
+  metricbeat-remote-b:
+    depends_on:
+      es-remote-b:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/beats/metricbeat:${STACK_VERSION}
+    user: root
+    volumes:
+      - certs:/usr/share/metricbeat/config/certs
+      - ./config/metricbeat/metricbeat-remote-b.yml:/usr/share/metricbeat/metricbeat.yml:ro
+    env_file: .env
+    environment:
+      - MONITORING_PASSWORD=${MONITORING_PASSWORD}
+    command: ["metricbeat", "-e", "--strict.perms=false"]
+    networks:
+      - dod-elastic
+
+networks:
+  dod-elastic:
+    driver: bridge
+
+volumes:
+  certs:
+  es-central-data:
+  es-remote-a-data:
+  es-remote-b-data:
+  kibana-data:
+  kafka-data:
+  init-state:

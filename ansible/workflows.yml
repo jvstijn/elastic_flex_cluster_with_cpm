@@ -1,0 +1,6 @@
+---
+- name: Elastic CPM Workflows uitrollen op de centrale Elasticsearch / Kibana
+  hosts: cpm
+  gather_facts: false
+  roles:
+    - elastic_cpm_workflows

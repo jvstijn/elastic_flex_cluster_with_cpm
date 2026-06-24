@@ -1,0 +1,40 @@
+name: cpmw-forecast-trigger
+description: Trigger ML forecasts for the CPM anomaly detectors. Native port of the cpm-forecast-trigger watcher (no transform, no Painless).
+enabled: true
+triggers:
+  - type: scheduled
+    with:
+      every: 1h
+steps:
+  - name: forecast_store_size
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /_ml/anomaly_detectors/cpm-store-size/_forecast
+      body:
+        duration: 24h
+        expires_in: 48h
+  - name: forecast_jvm_heap
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /_ml/anomaly_detectors/cpm-jvm-heap/_forecast
+      body:
+        duration: 24h
+        expires_in: 48h
+  - name: forecast_shard_count
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /_ml/anomaly_detectors/cpm-shard-count/_forecast
+      body:
+        duration: 24h
+        expires_in: 48h
+  - name: forecast_cluster_event_rate
+    type: elasticsearch.request
+    with:
+      method: POST
+      path: /_ml/anomaly_detectors/cpm-cluster-event-rate/_forecast
+      body:
+        duration: 24h
+        expires_in: 48h
