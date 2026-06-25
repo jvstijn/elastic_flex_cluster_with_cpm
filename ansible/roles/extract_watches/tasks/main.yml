@@ -1,0 +1,29 @@
+---
+- name: Ensure extract_watches output directory exists
+  ansible.builtin.file:
+    path: "{{ extract_watches_output_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Write watcher export spec for extract script
+  ansible.builtin.copy:
+    content: "{{ {'watchers': extract_watches_specs} | to_nice_json }}"
+    dest: "{{ extract_watches_spec_file }}"
+    mode: "0600"
+  changed_when: false
+
+- name: Export CPM watchers to elastic_cpm Jinja2 templates
+  ansible.builtin.command:
+    argv: "{{ extract_watches_argv }}"
+  register: extract_watches_result
+  changed_when: extract_watches_result.rc == 0
+  failed_when: extract_watches_result.rc != 0
+
+- name: Remove temporary watch export spec
+  ansible.builtin.file:
+    path: "{{ extract_watches_spec_file }}"
+    state: absent
+
+- name: Show export summary
+  ansible.builtin.debug:
+    msg: "{{ extract_watches_result.stdout_lines }}"

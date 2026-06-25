@@ -1,0 +1,48 @@
+---
+# Source cluster (defaults align with elastic_cpm group_vars/all.yml).
+extract_watches_elastic_url: "{{ elastic_base_url | default('https://localhost:9200') }}"
+extract_watches_validate_certs: false
+
+# basic | api_key
+extract_watches_auth_method: "{{ 'basic' if (elastic_pw | default('')) | length > 0 else 'api_key' }}"
+
+extract_watches_user: "{{ elastic_usr | default('elastic') }}"
+extract_watches_password: "{{ elastic_pw | default('') }}"
+extract_watches_api_key: ""
+
+# Destination for elastic_cpm role templates.
+extract_watches_output_dir: "{{ playbook_dir }}/roles/elastic_cpm/templates"
+
+extract_watches_python: "{{ ansible_playbook_python | default(ansible_facts.python | default('python3')) }}"
+
+extract_watches_write_json: true
+# Sanitized JSON written to roles/elastic_cpm/exported_json/ when write_json is true.
+extract_watches_json_dir: "{{ playbook_dir }}/roles/elastic_cpm/exported_json"
+
+# watch_id on cluster -> template filename -> Jinja style for elastic_cpm.
+extract_watches_specs:
+  - watch_id: cpm-forecast-trigger
+    template: watcher_cpm-forecast-trigger.json.j2
+    style: simple
+    alt_watch_ids: []
+  - watch_id: cpm-scoring
+    template: watcher_cpm-scoring.json.j2
+    style: plain
+    alt_watch_ids: []
+  - watch_id: cpm-routing-advisor
+    template: watcher_cpm-routing-advisor.json.j2
+    style: inline
+    alt_watch_ids: []
+  - watch_id: cpm-registry-sync
+    template: watcher_cpm-register-sync.json.j2
+    style: inline
+    alt_watch_ids:
+      - cpm-register-sync
+  - watch_id: cpm-pipeline-manager
+    template: watcher_cpm-pipeline-manager.json.j2
+    style: split
+    alt_watch_ids: []
+  - watch_id: cpm-state-manager
+    template: watcher_cpm-state-manager.json.j2
+    style: scheme
+    alt_watch_ids: []

@@ -1,0 +1,25 @@
+---
+extract_watches_script: "{{ role_path }}/files/watch_to_j2.py"
+extract_watches_spec_file: "{{ playbook_dir }}/.extract_watches_spec.json"
+
+extract_watches_argv: "{{ extract_watches_argv_base + extract_watches_argv_ssl + extract_watches_argv_json + extract_watches_argv_auth }}"
+
+extract_watches_argv_base:
+  - "{{ extract_watches_python }}"
+  - "{{ extract_watches_script }}"
+  - --url
+  - "{{ extract_watches_elastic_url }}"
+  - --output-dir
+  - "{{ extract_watches_output_dir }}"
+  - --watch-spec
+  - "{{ extract_watches_spec_file }}"
+
+extract_watches_argv_ssl: "{{ ['--verify-ssl'] if extract_watches_validate_certs else [] }}"
+extract_watches_argv_json: "{{ ['--write-json'] if extract_watches_write_json else [] }}"
+
+extract_watches_argv_auth: >-
+  {{
+    ['--api-key', extract_watches_api_key]
+    if extract_watches_auth_method == 'api_key'
+    else ['--basic-auth', extract_watches_user, extract_watches_password]
+  }}
