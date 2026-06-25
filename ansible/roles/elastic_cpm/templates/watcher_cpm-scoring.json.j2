@@ -1,104 +1,293 @@
 {
-  "trigger": { "schedule": { "cron": "0 15 0 * * ?" } },
+  "trigger": {
+    "schedule": {
+      "cron": "0 5 0 * * ?"
+    }
+  },
   "input": {
     "chain": {
       "inputs": [
-        { "registry": { "search": { "request": {
-            "search_type": "query_then_fetch",
-            "indices": ["cpm-cluster-registry"],
-            "rest_total_hits_as_int": true,
-            "body": { "size": 10, "query": { "term": { "active": true } } }
-        } } } },
-        { "disk_forecast": { "search": { "request": {
-            "search_type": "query_then_fetch",
-            "indices": [".ml-anomalies-*"],
-            "rest_total_hits_as_int": true,
-            "body": {
-              "size": 0,
-              "query": { "bool": { "filter": [
-                { "term":  { "job_id": "cpm-store-size" } },
-                { "term":  { "result_type": "model_forecast" } },
-                { "range": { "timestamp": { "gte": "now", "lte": "now+24h" } } }
-              ] } },
-              "aggs": {
-                "by_cluster": {
-                  "terms": { "field": "partition_field_value", "size": 10 },
-                  "aggs":  { "peak": { "max": { "field": "forecast_prediction" } } }
+        {
+          "registry": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  "cpm-cluster-registry"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 10,
+                  "query": {
+                    "term": {
+                      "active": true
+                    }
+                  }
                 }
               }
             }
-        } } } },
-        { "jvm_forecast": { "search": { "request": {
-            "search_type": "query_then_fetch",
-            "indices": [".ml-anomalies-*"],
-            "rest_total_hits_as_int": true,
-            "body": {
-              "size": 0,
-              "query": { "bool": { "filter": [
-                { "term":  { "job_id": "cpm-jvm-heap" } },
-                { "term":  { "result_type": "model_forecast" } },
-                { "range": { "timestamp": { "gte": "now", "lte": "now+24h" } } }
-              ] } },
-              "aggs": {
-                "by_cluster": {
-                  "terms": { "field": "partition_field_value", "size": 10 },
-                  "aggs":  { "peak": { "max": { "field": "forecast_prediction" } } }
+          }
+        },
+        {
+          "disk_forecast": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  ".ml-anomalies-*"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 0,
+                  "query": {
+                    "bool": {
+                      "filter": [
+                        {
+                          "term": {
+                            "job_id": "cpm-store-size"
+                          }
+                        },
+                        {
+                          "term": {
+                            "result_type": "model_forecast"
+                          }
+                        },
+                        {
+                          "range": {
+                            "timestamp": {
+                              "gte": "now",
+                              "lte": "now+24h"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "aggs": {
+                    "by_cluster": {
+                      "terms": {
+                        "field": "partition_field_value",
+                        "size": 10
+                      },
+                      "aggs": {
+                        "peak": {
+                          "max": {
+                            "field": "forecast_prediction"
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
-        } } } },
-        { "shard_forecast": { "search": { "request": {
-            "search_type": "query_then_fetch",
-            "indices": [".ml-anomalies-*"],
-            "rest_total_hits_as_int": true,
-            "body": {
-              "size": 0,
-              "query": { "bool": { "filter": [
-                { "term":  { "job_id": "cpm-shard-count" } },
-                { "term":  { "result_type": "model_forecast" } },
-                { "range": { "timestamp": { "gte": "now", "lte": "now+24h" } } }
-              ] } },
-              "aggs": {
-                "by_cluster": {
-                  "terms": { "field": "partition_field_value", "size": 10 },
-                  "aggs":  { "peak": { "max": { "field": "forecast_prediction" } } }
+          }
+        },
+        {
+          "jvm_forecast": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  ".ml-anomalies-*"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 0,
+                  "query": {
+                    "bool": {
+                      "filter": [
+                        {
+                          "term": {
+                            "job_id": "cpm-jvm-heap"
+                          }
+                        },
+                        {
+                          "term": {
+                            "result_type": "model_forecast"
+                          }
+                        },
+                        {
+                          "range": {
+                            "timestamp": {
+                              "gte": "now",
+                              "lte": "now+24h"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "aggs": {
+                    "by_cluster": {
+                      "terms": {
+                        "field": "partition_field_value",
+                        "size": 10
+                      },
+                      "aggs": {
+                        "peak": {
+                          "max": {
+                            "field": "forecast_prediction"
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
-        } } } },
-        { "load_forecast": { "search": { "request": {
-            "search_type": "query_then_fetch",
-            "indices": [".ml-anomalies-*"],
-            "rest_total_hits_as_int": true,
-            "body": {
-              "size": 0,
-              "query": { "bool": { "filter": [
-                { "term":  { "job_id": "cpm-cluster-event-rate" } },
-                { "term":  { "result_type": "model_forecast" } },
-                { "range": { "timestamp": { "gte": "now", "lte": "now+24h" } } }
-              ] } },
-              "aggs": {
-                "by_cluster": {
-                  "terms": { "field": "partition_field_value", "size": 10 },
-                  "aggs":  { "peak": { "max": { "field": "forecast_prediction" } } }
+          }
+        },
+        {
+          "shard_forecast": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  ".ml-anomalies-*"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 0,
+                  "query": {
+                    "bool": {
+                      "filter": [
+                        {
+                          "term": {
+                            "job_id": "cpm-shard-count"
+                          }
+                        },
+                        {
+                          "term": {
+                            "result_type": "model_forecast"
+                          }
+                        },
+                        {
+                          "range": {
+                            "timestamp": {
+                              "gte": "now",
+                              "lte": "now+24h"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "aggs": {
+                    "by_cluster": {
+                      "terms": {
+                        "field": "partition_field_value",
+                        "size": 10
+                      },
+                      "aggs": {
+                        "peak": {
+                          "max": {
+                            "field": "forecast_prediction"
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
-        } } } }
+          }
+        },
+        {
+          "load_forecast": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  ".ml-anomalies-*"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 0,
+                  "query": {
+                    "bool": {
+                      "filter": [
+                        {
+                          "term": {
+                            "job_id": "cpm-cluster-event-rate"
+                          }
+                        },
+                        {
+                          "term": {
+                            "result_type": "model_forecast"
+                          }
+                        },
+                        {
+                          "range": {
+                            "timestamp": {
+                              "gte": "now",
+                              "lte": "now+24h"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "aggs": {
+                    "by_cluster": {
+                      "terms": {
+                        "field": "partition_field_value",
+                        "size": 10
+                      },
+                      "aggs": {
+                        "peak": {
+                          "max": {
+                            "field": "forecast_prediction"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "routing_config": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  "cpm-routing-config"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 1,
+                  "query": {
+                    "ids": {
+                      "values": [
+                        "_global"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       ]
     }
   },
-  "condition": { "always": {} },
+  "condition": {
+    "always": {}
+  },
   "transform": {
     "script": {
-      "source": "Map diskMap = new HashMap(); Map jvmMap = new HashMap(); Map shardMap = new HashMap(); Map loadMap = new HashMap(); Map regMap = new HashMap(); for (def b : ctx.payload.disk_forecast.aggregations.by_cluster.buckets) diskMap[b.key] = b.peak.value != null ? ((Number)b.peak.value).doubleValue() : 0.0; for (def b : ctx.payload.jvm_forecast.aggregations.by_cluster.buckets) jvmMap[b.key] = b.peak.value != null ? ((Number)b.peak.value).doubleValue() : 0.0; for (def b : ctx.payload.shard_forecast.aggregations.by_cluster.buckets) shardMap[b.key] = b.peak.value != null ? ((Number)b.peak.value).doubleValue() : 0.0; for (def b : ctx.payload.load_forecast.aggregations.by_cluster.buckets) loadMap[b.key] = b.peak.value != null ? ((Number)b.peak.value).doubleValue() : 0.0; for (def hit : ctx.payload.registry.hits.hits) regMap[hit._source.cluster_uuid] = hit._source; List clusters = new ArrayList(); for (def uuid : regMap.keySet()) { def reg = regMap[uuid]; double dtotal = reg['disk_total_bytes'] != null ? ((Number)reg['disk_total_bytes']).doubleValue() : 1.0; double smax = reg['shard_max_threshold'] != null ? ((Number)reg['shard_max_threshold']).doubleValue() : 1000.0; double qthresh = reg['write_queue_threshold'] != null ? ((Number)reg['write_queue_threshold']).doubleValue() : 50.0; double diskB = diskMap.containsKey(uuid) ? diskMap[uuid] : 0.0; double jvmP = jvmMap.containsKey(uuid) ? jvmMap[uuid] : 0.0; double shardC = shardMap.containsKey(uuid) ? shardMap[uuid] : 0.0; double queueD = loadMap.containsKey(uuid) ? loadMap[uuid] : 0.0; double diskScore = dtotal > 0 ? (diskB / dtotal) * 100.0 : 0.0; double jvmScore = jvmP; double shardScore = smax > 0 ? (shardC / smax) * 100.0 : 0.0; double loadScore = qthresh > 0 ? (queueD / qthresh) * 100.0 : 0.0; double total = 0.50*diskScore + 0.25*jvmScore + 0.05*shardScore + 0.20*loadScore; Map c = new HashMap(); c['cluster_id'] = reg['cluster_id']; c['cluster_uuid'] = uuid; c['disk_used_pct_forecast'] = diskScore; c['jvm_heap_pct_forecast'] = jvmScore; c['shard_score'] = shardScore; c['write_queue_forecast'] = queueD; c['load_score'] = loadScore; c['total_score'] = total; c['alert'] = total > 80.0; clusters.add(c); } Map out = new HashMap(); out['scored_at'] = ctx.execution_time.toString(); out['forecast_horizon_hours'] = 24; out['clusters'] = clusters; return out;",
+      "source": "Map diskMap  = new HashMap();\nMap jvmMap   = new HashMap();\nMap shardMap = new HashMap();\nMap loadMap  = new HashMap();\nMap regMap   = new HashMap();\n\nif (ctx.payload.disk_forecast != null && ctx.payload.disk_forecast.aggregations != null && ctx.payload.disk_forecast.aggregations.by_cluster != null) {\n  for (def b : ctx.payload.disk_forecast.aggregations.by_cluster.buckets)\n    diskMap[b.key]  = b.peak.value != null ? ((Number)b.peak.value).doubleValue() : 0.0;\n}\nif (ctx.payload.jvm_forecast != null && ctx.payload.jvm_forecast.aggregations != null && ctx.payload.jvm_forecast.aggregations.by_cluster != null) {\n  for (def b : ctx.payload.jvm_forecast.aggregations.by_cluster.buckets)\n    jvmMap[b.key]   = b.peak.value != null ? ((Number)b.peak.value).doubleValue() : 0.0;\n}\nif (ctx.payload.shard_forecast != null && ctx.payload.shard_forecast.aggregations != null && ctx.payload.shard_forecast.aggregations.by_cluster != null) {\n  for (def b : ctx.payload.shard_forecast.aggregations.by_cluster.buckets)\n    shardMap[b.key] = b.peak.value != null ? ((Number)b.peak.value).doubleValue() : 0.0;\n}\nif (ctx.payload.load_forecast != null && ctx.payload.load_forecast.aggregations != null && ctx.payload.load_forecast.aggregations.by_cluster != null) {\n  for (def b : ctx.payload.load_forecast.aggregations.by_cluster.buckets)\n    loadMap[b.key]  = b.peak.value != null ? ((Number)b.peak.value).doubleValue() : 0.0;\n}\nfor (def hit : ctx.payload.registry.hits.hits)\n  regMap[hit._source.cluster_uuid] = hit._source;\n\ndouble wDisk = 0.50;\ndouble wJvm = 0.25;\ndouble wShard = 0.05;\ndouble wLoad = 0.20;\ndouble alertAt = 80.0;\nint forecastHours = 24;\n\nif (ctx.payload.routing_config != null && ctx.payload.routing_config.hits != null && ctx.payload.routing_config.hits.hits.size() > 0) {\n  def cfg = ctx.payload.routing_config.hits.hits[0]._source;\n  if (cfg != null) {\n    if (cfg.weights != null) {\n      if (cfg.weights.disk != null) wDisk = ((Number)cfg.weights.disk).doubleValue();\n      if (cfg.weights.jvm != null) wJvm = ((Number)cfg.weights.jvm).doubleValue();\n      if (cfg.weights.shard != null) wShard = ((Number)cfg.weights.shard).doubleValue();\n      if (cfg.weights.load != null) wLoad = ((Number)cfg.weights.load).doubleValue();\n    }\n    if (cfg.alert_threshold != null) alertAt = ((Number)cfg.alert_threshold).doubleValue();\n    if (cfg.forecast_horizon_hours != null) forecastHours = ((Number)cfg.forecast_horizon_hours).intValue();\n  }\n}\n\nList clusters = new ArrayList();\nfor (def uuid : regMap.keySet()) {\n  def reg        = regMap[uuid];\n  double dtotal  = reg['disk_total_bytes']       != null ? ((Number)reg['disk_total_bytes']).doubleValue()       : 1.0;\n  double smax    = reg['shard_max_threshold']    != null ? ((Number)reg['shard_max_threshold']).doubleValue()    : 1000.0;\n  double qthresh = reg['write_queue_threshold']  != null ? ((Number)reg['write_queue_threshold']).doubleValue()  : 50.0;\n\n  double diskB    = diskMap.containsKey(uuid)  ? diskMap[uuid]  : 0.0;\n  double jvmP     = jvmMap.containsKey(uuid)   ? jvmMap[uuid]   : 0.0;\n  double shardC   = shardMap.containsKey(uuid) ? shardMap[uuid] : 0.0;\n  double queueD   = loadMap.containsKey(uuid)  ? loadMap[uuid]  : 0.0;\n\n  double diskScore  = dtotal  > 0 ? (diskB  / dtotal)  * 100.0 : 0.0;\n  double jvmScore   = jvmP;\n  double shardScore = smax    > 0 ? (shardC / smax)    * 100.0 : 0.0;\n  double loadScore  = qthresh > 0 ? (queueD / qthresh) * 100.0 : 0.0;\n\n  double total = wDisk*diskScore + wJvm*jvmScore + wShard*shardScore + wLoad*loadScore;\n\n  Map c = new HashMap();\n  c['cluster_id']              = reg['cluster_id'];\n  c['cluster_uuid']            = uuid;\n  c['disk_used_pct_forecast']  = diskScore;\n  c['jvm_heap_pct_forecast']   = jvmScore;\n  c['shard_score']             = shardScore;\n  c['write_queue_forecast']    = queueD;\n  c['load_score']              = loadScore;\n  c['total_score']             = total;\n  c['alert']                   = total > alertAt;\n  clusters.add(c);\n}\n\nMap weightsOut = new HashMap();\nweightsOut['disk'] = wDisk;\nweightsOut['jvm'] = wJvm;\nweightsOut['shard'] = wShard;\nweightsOut['load'] = wLoad;\n\nMap out = new HashMap();\nout['scored_at']              = ctx.execution_time.toString();\nout['forecast_horizon_hours'] = forecastHours;\nout['alert_threshold']        = alertAt;\nout['weights_applied']        = weightsOut;\nout['clusters']               = clusters;\nreturn out;",
       "lang": "painless"
     }
   },
   "actions": {
     "write_scores": {
-      "index": { "index": "cpm-scores" }
+      "index": {
+        "index": "cpm-scores"
+      }
     }
-  },
-  "metadata": { "xpack": { "type": "json" } }
+  }
 }

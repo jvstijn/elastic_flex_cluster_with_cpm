@@ -20,10 +20,10 @@
         "path": "/_ml/anomaly_detectors/cpm-store-size/_forecast",
         "params": {},
         "headers": {
-          "Content-Type": "application/json",
-          "Authorization": "Apikey {{ watcher_api_key.encoded  }}"
+          "Authorization": "Apikey {{ watcher_api_key.encoded  }}",
+          "Content-Type": "application/json"
         },
-        "body": """{"duration":"24h","expires_in":"48h"}"""
+        "body": "{\"duration\":\"24h\",\"expires_in\":\"48h\"}"
       }
     },
     "forecast_cpm-jvm-heap": {
@@ -35,10 +35,10 @@
         "path": "/_ml/anomaly_detectors/cpm-jvm-heap/_forecast",
         "params": {},
         "headers": {
-          "Content-Type": "application/json",
-          "Authorization": "Apikey {{ watcher_api_key.encoded  }}"
+          "Authorization": "Apikey {{ watcher_api_key.encoded  }}",
+          "Content-Type": "application/json"
         },
-        "body": """{"duration":"24h","expires_in":"48h"}"""
+        "body": "{\"duration\":\"24h\",\"expires_in\":\"48h\"}"
       }
     },
     "forecast_cpm-shard-count": {
@@ -50,10 +50,10 @@
         "path": "/_ml/anomaly_detectors/cpm-shard-count/_forecast",
         "params": {},
         "headers": {
-          "Content-Type": "application/json",
-          "Authorization": "Apikey {{ watcher_api_key.encoded  }}"
+          "Authorization": "Apikey {{ watcher_api_key.encoded  }}",
+          "Content-Type": "application/json"
         },
-        "body": """{"duration":"24h","expires_in":"48h"}"""
+        "body": "{\"duration\":\"24h\",\"expires_in\":\"48h\"}"
       }
     },
     "forecast_cpm-cluster-event-rate": {
@@ -65,10 +65,10 @@
         "path": "/_ml/anomaly_detectors/cpm-cluster-event-rate/_forecast",
         "params": {},
         "headers": {
-          "Content-Type": "application/json",
-          "Authorization": "Apikey {{ watcher_api_key.encoded  }}"
+          "Authorization": "Apikey {{ watcher_api_key.encoded  }}",
+          "Content-Type": "application/json"
         },
-        "body": """{"duration":"24h","expires_in":"48h"}"""
+        "body": "{\"duration\":\"24h\",\"expires_in\":\"48h\"}"
       }
     }
   }

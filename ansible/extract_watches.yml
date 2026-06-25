@@ -1,0 +1,6 @@
+---
+- name: Extract CPM watchers from Elasticsearch into elastic_cpm templates
+  hosts: cpm
+  gather_facts: true
+  roles:
+    - extract_watches
