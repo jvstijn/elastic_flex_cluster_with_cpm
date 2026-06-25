@@ -1,0 +1,15 @@
+server.name: kibana
+server.host: "0.0.0.0"
+server.publicBaseUrl: "http://localhost:5601"
+
+elasticsearch.hosts: ["https://es-central:9200"]
+elasticsearch.username: "kibana_system"
+elasticsearch.ssl.certificateAuthorities: ["/usr/share/kibana/config/certs/ca/ca.crt"]
+
+monitoring.ui.enabled: true
+monitoring.ui.elasticsearch.hosts: ["https://es-central:9200"]
+monitoring.ui.elasticsearch.username: "kibana_system"
+monitoring.ui.elasticsearch.password: "${KIBANA_PASSWORD}"
+monitoring.ui.elasticsearch.ssl.certificateAuthorities: ["/usr/share/kibana/config/certs/ca/ca.crt"]
+
+xpack.encryptedSavedObjects.encryptionKey: "a7b8c9d0e1f2345678901234567890ab"

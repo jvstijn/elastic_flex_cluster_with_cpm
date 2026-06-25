@@ -1,0 +1,27 @@
+metricbeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: false
+
+metricbeat.modules:
+  - module: elasticsearch
+    xpack.enabled: true
+    period: 10s
+    hosts: ["https://es-remote-b:9200"]
+    username: "remote_monitoring_user"
+    password: "${MONITORING_PASSWORD}"
+    ssl.certificate_authorities: ["/usr/share/metricbeat/config/certs/ca/ca.crt"]
+    scope: node
+
+output.elasticsearch:
+  hosts: ["https://es-central:9200"]
+  username: "remote_monitoring_agent"
+  password: "${MONITORING_PASSWORD}"
+  ssl.certificate_authorities: ["/usr/share/metricbeat/config/certs/ca/ca.crt"]
+
+setup.ilm.enabled: false
+setup.template.enabled: true
+setup.dashboards.enabled: false
+
+processors:
+  - add_host_metadata: ~
+  - add_cloud_metadata: ~

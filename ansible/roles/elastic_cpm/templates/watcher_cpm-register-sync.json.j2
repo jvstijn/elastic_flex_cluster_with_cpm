@@ -1,0 +1,118 @@
+{% raw %}
+{
+  "trigger": { "schedule": { "cron": "0 0 0 * * ?" } },
+  "input": {
+    "chain": {
+      "inputs": [
+        { "existing_registry": { "search": { "request": {
+            "search_type": "query_then_fetch",
+            "indices": ["cpm-cluster-registry"],
+            "rest_total_hits_as_int": true,
+            "body": { "size": 100 }
+        } } } },
+        { "monitoring_clusters": { "search": { "request": {
+            "search_type": "query_then_fetch",
+            "indices": ["monitoring:.monitoring-es-8-*"],
+            "rest_total_hits_as_int": true,
+            "body": {
+              "size": 0,
+              "query": { "bool": { "filter": [
+                { "match_phrase": { "event.dataset": "elasticsearch.cluster.stats" } },
+                { "range": { "@timestamp": { "gte": "now-1d" } } }
+              ] } },
+              "aggs": {
+                "by_cluster": {
+                  "terms": { "field": "elasticsearch.cluster.id", "size": 20 },
+                  "aggs": { "cluster_name": { "terms": { "field": "elasticsearch.cluster.name", "size": 1 } } }
+                }
+              }
+            }
+        } } } },
+        { "node_capacity": { "search": { "request": {
+            "search_type": "query_then_fetch",
+            "indices": ["monitoring:.monitoring-es-8-*"],
+            "rest_total_hits_as_int": true,
+            "body": {
+              "size": 0,
+              "query": { "bool": { "filter": [
+                { "match_phrase": { "event.dataset": "elasticsearch.node.stats" } },
+                { "range": { "@timestamp": { "gte": "now-1d" } } },
+                { "terms": { "elasticsearch.node.roles": ["data","data_content","data_hot","data_cold","data_warm"] } }
+              ] } },
+              "aggs": {
+                "by_cluster": {
+                  "terms": { "field": "elasticsearch.cluster.id", "size": 20 },
+                  "aggs": {
+                    "by_node": {
+                      "terms": { "field": "elasticsearch.node.id", "size": 200 },
+                      "aggs": {
+                        "disk_total": { "max": { "field": "elasticsearch.node.stats.fs.summary.total.bytes" } },
+                        "heap_max":   { "max": { "field": "elasticsearch.node.stats.jvm.mem.heap.max.bytes" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+        } } } },
+        { "ingest_nodes": { "search": { "request": {
+            "search_type": "query_then_fetch",
+            "indices": ["monitoring:.monitoring-es-8-*"],
+            "rest_total_hits_as_int": true,
+            "body": {
+              "size": 0,
+              "query": { "bool": { "filter": [
+                { "match_phrase": { "event.dataset": "elasticsearch.node.stats" } },
+                { "range": { "@timestamp": { "gte": "now-1d" } } },
+                { "terms": { "elasticsearch.node.roles": ["ingest"] } }
+              ] } },
+              "aggs": {
+                "by_cluster": {
+                  "terms": { "field": "elasticsearch.cluster.id", "size": 20 },
+                  "aggs": {
+                    "by_node": {
+                      "terms": { "field": "elasticsearch.node.id", "size": 200 },
+                      "aggs": { "hostname": { "terms": { "field": "host.name", "size": 1 } } }
+                    }
+                  }
+                }
+              }
+            }
+        } } } }
+      ]
+    }
+  },
+  "condition": {
+    "script": {
+      "source": "ctx.payload.monitoring_clusters.aggregations.by_cluster.buckets.size() > 0",
+      "lang": "painless"
+    }
+  },
+  "transform": {
+    "script": {
+      "source": "Map existing = new HashMap(); for (def hit : ctx.payload.existing_registry.hits.hits) { def s = hit._source; Map m = new HashMap(); if (s.containsKey('cluster_id')) m['cluster_id'] = s['cluster_id']; if (s.containsKey('cluster_name')) m['cluster_name'] = s['cluster_name']; if (s.containsKey('active')) m['active'] = s['active']; existing[(String)s['cluster_uuid']] = m; } Map capacityMap = new HashMap(); for (def cb : ctx.payload.node_capacity.aggregations.by_cluster.buckets) { String cid = (String)cb.key; long totalDisk = 0L; long totalHeap = 0L; int nodeCount = 0; for (def nb : cb.by_node.buckets) { if (nb.disk_total.value != null) totalDisk += ((Number)nb.disk_total.value).longValue(); if (nb.heap_max.value != null) totalHeap += ((Number)nb.heap_max.value).longValue(); nodeCount++; } Map cap = new HashMap(); cap['disk_total_bytes'] = totalDisk; cap['heap_max_bytes'] = totalHeap; cap['node_count'] = nodeCount; capacityMap[cid] = cap; } Map ingestMap = new HashMap(); for (def ib : ctx.payload.ingest_nodes.aggregations.by_cluster.buckets) { String cid = (String)ib.key; List hosts = new ArrayList(); for (def nb : ib.by_node.buckets) { if (nb.hostname.buckets.size() > 0) { hosts.add((String)nb.hostname.buckets[0].key); } } ingestMap[cid] = hosts; } List clusters = new ArrayList(); for (def b : ctx.payload.monitoring_clusters.aggregations.by_cluster.buckets) { String uuid = (String)b.key; String name = b.cluster_name.buckets.size() > 0 ? (String)b.cluster_name.buckets[0].key : uuid; Map ex = existing.containsKey(uuid) ? (Map)existing[uuid] : new HashMap(); Map cap = capacityMap.containsKey(uuid) ? (Map)capacityMap[uuid] : new HashMap(); List ingestHosts = ingestMap.containsKey(uuid) ? (List)ingestMap[uuid] : new ArrayList(); String ingestHostsStr = String.join(',', ingestHosts); long diskTotal = cap.containsKey('disk_total_bytes') ? ((Number)cap['disk_total_bytes']).longValue() * 85L / 100L : 0L; long heapMax = cap.containsKey('heap_max_bytes') ? ((Number)cap['heap_max_bytes']).longValue() : 0L; int nodeCount = cap.containsKey('node_count') ? ((Number)cap['node_count']).intValue() : 0; int shardMax = heapMax > 0L ? (int)Math.round((double)heapMax / 1073741824.0 * 20.0) : 1000; long queueThresh = 200L; Map c = new HashMap(); c['cluster_uuid'] = uuid; c['cluster_id'] = ex.containsKey('cluster_id') ? (String)ex['cluster_id'] : uuid; c['cluster_name'] = ex.containsKey('cluster_name') ? (String)ex['cluster_name'] : name; c['disk_total_bytes'] = diskTotal; c['heap_max_bytes'] = heapMax; c['node_count'] = nodeCount; c['shard_max_threshold'] = shardMax; c['write_queue_threshold'] = queueThresh; c['ingest_hosts'] = ingestHostsStr; c['active'] = ex.containsKey('active') ? (boolean)ex['active'] : true; clusters.add(c); } Map out = new HashMap(); out['clusters'] = clusters; return out;",
+      "lang": "painless"
+    }
+  },
+  "actions": {
+    "bulk_upsert": {
+{% endraw %}
+      "webhook": {
+        "scheme": "https",
+        "host": "{{ webhook_host }}",
+        "port": 9200,
+        "method": "post",
+        "path": "/_bulk",
+        "params": {},
+        "headers": {
+          "Content-Type": "application/x-ndjson",
+          "Authorization": "Apikey {{ watcher_api_key.encoded }}"
+        },
+{% raw %}
+        "body": "{{#ctx.payload.clusters}}{\"index\":{\"_index\":\"cpm-cluster-registry\",\"_id\":\"{{{cluster_uuid}}}\"}}\n{\"cluster_uuid\":\"{{{cluster_uuid}}}\",\"cluster_id\":\"{{{cluster_id}}}\",\"cluster_name\":\"{{{cluster_name}}}\",\"disk_total_bytes\":{{disk_total_bytes}},\"heap_max_bytes\":{{heap_max_bytes}},\"node_count\":{{node_count}},\"shard_max_threshold\":{{shard_max_threshold}},\"write_queue_threshold\":{{write_queue_threshold}},\"ingest_hosts\":\"{{{ingest_hosts}}}\",\"active\":{{active}}}\n{{/ctx.payload.clusters}}"
+      }
+    }
+  },
+  "metadata": { "xpack": { "type": "json" } }
+}
+{% endraw %}

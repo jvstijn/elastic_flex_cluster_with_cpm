@@ -1,0 +1,211 @@
+{% raw %}
+{
+  "trigger": {
+    "schedule": {
+      "cron": "0 15 0 * * ?"
+    }
+  },
+  "input": {
+    "chain": {
+      "inputs": [
+        {
+          "routing_suggestions": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  "cpm-routing-suggestions"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 10,
+                  "sort": [
+                    {
+                      "suggested_at": {
+                        "order": "desc"
+                      }
+                    }
+                  ],
+                  "_source": [
+                    "data_stream_type",
+                    "dataset",
+                    "namespace",
+                    "suggested_cluster_id",
+                    "source_score",
+                    "target_score",
+                    "event_rate_1h",
+                    "suggested_at"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "registry": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  "cpm-cluster-registry"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 20,
+                  "query": {
+                    "term": {
+                      "active": true
+                    }
+                  },
+                  "_source": [
+                    "cluster_id",
+                    "cluster_uuid",
+                    "cluster_name",
+                    "ingest_hosts",
+                    "dc"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "dataset_rates": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  ".monitoring-es-8-*"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 0,
+                  "query": {
+                    "bool": {
+                      "filter": [
+                        {
+                          "match_phrase": {
+                            "event.dataset": "elasticsearch.index"
+                          }
+                        },
+                        {
+                          "range": {
+                            "@timestamp": {
+                              "gte": "now-2h"
+                            }
+                          }
+                        },
+                        {
+                          "bool": {
+                            "should": [
+                              {
+                                "wildcard": {
+                                  "elasticsearch.index.name": ".ds-logs-*"
+                                }
+                              },
+                              {
+                                "wildcard": {
+                                  "elasticsearch.index.name": ".ds-metrics-*"
+                                }
+                              },
+                              {
+                                "wildcard": {
+                                  "elasticsearch.index.name": ".ds-traces-*"
+                                }
+                              }
+                            ],
+                            "minimum_should_match": 1
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "aggs": {
+                    "by_cluster": {
+                      "terms": {
+                        "field": "cluster_uuid",
+                        "size": 10
+                      },
+                      "aggs": {
+                        "by_index": {
+                          "terms": {
+                            "field": "elasticsearch.index.name",
+                            "size": 500
+                          },
+                          "aggs": {
+                            "over_time": {
+                              "date_histogram": {
+                                "field": "@timestamp",
+                                "fixed_interval": "1h"
+                              },
+                              "aggs": {
+                                "max_total": {
+                                  "max": {
+                                    "field": "elasticsearch.index.total.indexing.index_total"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "existing_state": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  "cpm-pipeline-state"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 500
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "condition": {
+    "always": {}
+  },
+  "actions": {
+    "index_state": {
+      "foreach": "ctx.payload.state",
+      "max_iterations": 200,
+      "webhook": {
+{% endraw %}
+        "scheme": "https",
+        "host": "{{ webhook_host }}",
+{% raw %}
+        "port": 9200,
+        "method": "put",
+        "path": "/cpm-pipeline-state/_doc/{{ctx.payload.data_stream_type}}-{{ctx.payload.dataset}}-{{ctx.payload.namespace}}",
+        "params": {},
+        "headers": {
+          "Content-Type": "application/json",
+{% endraw %}
+          "Authorization": "Apikey {{ watcher_api_key.encoded  }}"
+{% raw %}
+        },
+        "body": "{{#toJson}}ctx.payload{{/toJson}}"
+      }
+    }
+  },
+  "transform": {
+    "script": {
+      "source": "// ====== CPM Pipeline Manager (State Builder) ======\n// Computes desired state: which dataset goes to which cluster/pipeline\n// Outputs: state entries written to cpm-pipeline-state\n\n// Timestamp\nString ts = ctx.execution_time.toString();\n\n// Build registry map: cluster_id -> {cluster_uuid, cluster_name, ingest_hosts, dc}\nMap registryMap = new HashMap();\nfor (def hit : ctx.payload.registry.hits.hits) {\n  Map src = hit._source;\n  String cid = (String)src.cluster_id;\n  Map m = new HashMap();\n  m.put('cluster_id', cid);\n  m.put('cluster_uuid', (String)src.cluster_uuid);\n  m.put('cluster_name', src.cluster_name != null ? (String)src.cluster_name : '');\n  m.put('ingest_hosts', src.ingest_hosts != null ? (String)src.ingest_hosts : '');\n  m.put('dc', src.dc != null ? (String)src.dc : '');\n  registryMap.put(cid, m);\n}\n\n// ====== DEDICATED PIPELINES (from routing suggestions) ======\nList stateEntries = new ArrayList();\nSet managedTopics = new HashSet();\nSet seenClusters = new HashSet();\n\ndef sugDocs = ctx.payload.routing_suggestions.hits.hits;\nfor (def hit : sugDocs) {\n  Map src = hit._source;\n  String dataset    = (String)src.dataset;\n  String namespace  = src.namespace != null ? (String)src.namespace : 'default';\n  String streamType = src.data_stream_type != null ? (String)src.data_stream_type : 'logs';\n  String sugCluster = (String)src.suggested_cluster_id;\n\n  if (seenClusters.contains(sugCluster)) continue;\n  seenClusters.add(sugCluster);\n\n  Map cluster = (Map)registryMap.get(sugCluster);\n  if (cluster == null) continue;\n  String dc = (String)cluster.get('dc');\n  if (dc == null || dc.isEmpty()) dc = 'default';\n\n  String topic = streamType + '-' + dataset + '-' + namespace;\n  String pipelineId = dc + '_cpm-dedicated-' + sugCluster;\n  managedTopics.add(topic);\n\n  Map st = new HashMap();\n  st.put('data_stream_type', streamType);\n  st.put('dataset', dataset);\n  st.put('namespace', namespace);\n  st.put('pipeline_type', 'dedicated');\n  st.put('pipeline_id', pipelineId);\n  st.put('cluster_id', sugCluster);\n  st.put('dc', dc);\n  st.put('topic', topic);\n  st.put('updated_at', ts);\n  stateEntries.add(st);\n}\n\n// ====== READ EXISTING STATE (source of truth for catchall assignments) ======\nMap stateCatchallTopics = new HashMap();\nSet stateAllTopics = new HashSet();\n\nif (ctx.payload.existing_state != null && ctx.payload.existing_state.hits != null) {\n  for (def hit : ctx.payload.existing_state.hits.hits) {\n    Map src = hit._source;\n    String ptype = (String)src.pipeline_type;\n    String topic = (String)src.topic;\n    String cid = (String)src.cluster_id;\n\n    if ('dedicated'.equals(ptype)) continue;\n    if (src.data_stream_type == null) continue;\n    String streamType = (String)src.data_stream_type;\n    String dataset = src.dataset != null ? (String)src.dataset : '';\n    String ns = src.namespace != null ? (String)src.namespace : 'default';\n    if (!topic.startsWith('logs-') && !topic.startsWith('metrics-') && !topic.startsWith('traces-')) {\n      topic = streamType + '-' + dataset + '-' + ns;\n    }\n    if (managedTopics.contains(topic)) continue;\n\n    if (!stateCatchallTopics.containsKey(cid)) {\n      stateCatchallTopics.put(cid, new ArrayList());\n    }\n    ((List)stateCatchallTopics.get(cid)).add(topic);\n    stateAllTopics.add(topic);\n  }\n}\n\n// ====== DISCOVER NEW DATASETS FROM MONITORING (fallback) ======\nMap datasetClusterMap = new HashMap();\ndef rateBuckets = ctx.payload.dataset_rates.aggregations.by_cluster.buckets;\nfor (def cb : rateBuckets) {\n  String uuid = (String)cb.key;\n  for (def ib : cb.by_index.buckets) {\n    String iname = (String)ib.key;\n    if (!iname.startsWith('.ds-')) continue;\n    String afterDs = iname.substring(4);\n    if (!afterDs.startsWith('logs-') && !afterDs.startsWith('metrics-') && !afterDs.startsWith('traces-')) continue;\n    String idx = afterDs;\n    int p = idx.lastIndexOf('-'); if (p <= 0) continue;\n    idx = idx.substring(0, p);\n    p = idx.lastIndexOf('-'); if (p <= 0) continue;\n    idx = idx.substring(0, p);\n    int fd = idx.indexOf('-'); if (fd <= 0) continue;\n    String streamType = idx.substring(0, fd);\n    if (!streamType.equals('logs') && !streamType.equals('metrics') && !streamType.equals('traces')) continue;\n    String rest = idx.substring(fd + 1);\n    int nd = rest.lastIndexOf('-'); if (nd <= 0) continue;\n    String dataset = rest.substring(0, nd);\n    String ns = rest.substring(nd + 1);\n    String topic = streamType + '-' + dataset + '-' + ns;\n    if (managedTopics.contains(topic)) continue;\n    if (stateAllTopics.contains(topic)) continue;\n    Map cl = (Map)registryMap.get(uuid);\n    if (cl != null) {\n      Map dm = new HashMap();\n      dm.put('cluster_id', (String)cl.get('cluster_id'));\n      dm.put('namespace', ns);\n      dm.put('data_stream_type', streamType);\n      datasetClusterMap.put(streamType + '|' + dataset, dm);\n    }\n  }\n}\n\n// ====== MERGE: state + new monitoring data ======\nMap clusterTopics = new HashMap(stateCatchallTopics);\nfor (def entry : datasetClusterMap.entrySet()) {\n  String mapKey = (String)entry.getKey();\n  Map dm = (Map)entry.getValue();\n  int sep = mapKey.indexOf('|');\n  String streamType = sep > 0 ? mapKey.substring(0, sep) : 'logs';\n  String dataset = sep > 0 ? mapKey.substring(sep + 1) : mapKey;\n  String cid = (String)dm.get('cluster_id');\n  String ns = (String)dm.get('namespace');\n  String topic = streamType + '-' + dataset + '-' + ns;\n  if (!clusterTopics.containsKey(cid)) {\n    clusterTopics.put(cid, new ArrayList());\n  }\n  ((List)clusterTopics.get(cid)).add(topic);\n}\n\n// ====== CATCHALL STATE ENTRIES ======\nfor (def ctEntry : clusterTopics.entrySet()) {\n  String cid = (String)ctEntry.getKey();\n  List topics = (List)ctEntry.getValue();\n  Map cluster = (Map)registryMap.get(cid);\n  if (cluster == null) continue;\n  String dc = (String)cluster.get('dc');\n  if (dc == null || dc.isEmpty()) dc = 'default';\n  String pipelineId = dc + '_cpm-catchall-' + cid;\n\n  for (int si = 0; si < topics.size(); si++) {\n    String topic = (String)topics.get(si);\n    String streamType = 'logs';\n    String dsName = topic;\n    String ns = 'default';\n    if (topic.startsWith('logs-') || topic.startsWith('metrics-') || topic.startsWith('traces-')) {\n      int fd = topic.indexOf('-');\n      int ld = topic.lastIndexOf('-');\n      if (fd > 0 && ld > fd) {\n        streamType = topic.substring(0, fd);\n        dsName = topic.substring(fd + 1, ld);\n        ns = topic.substring(ld + 1);\n      }\n    } else {\n      int lastDash = topic.lastIndexOf('-');\n      dsName = lastDash > 0 ? topic.substring(0, lastDash) : topic;\n      ns = lastDash > 0 ? topic.substring(lastDash + 1) : 'default';\n    }\n    Map st = new HashMap();\n    st.put('data_stream_type', streamType);\n    st.put('dataset', dsName);\n    st.put('namespace', ns);\n    st.put('pipeline_type', 'catchall');\n    st.put('pipeline_id', pipelineId);\n    st.put('cluster_id', cid);\n    st.put('dc', dc);\n    st.put('topic', topic);\n    st.put('updated_at', ts);\n    stateEntries.add(st);\n  }\n}\n\nMap out = new HashMap();\nout.put('state', stateEntries);\nreturn out;",
+      "lang": "painless"
+    }
+  }
+}
+{% endraw %}

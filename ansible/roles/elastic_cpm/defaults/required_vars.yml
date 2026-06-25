@@ -1,0 +1,4 @@
+---
+required_vars:
+  - cpm_ml_detectors
+  - cpm_ml_datafeeds

@@ -1,0 +1,6 @@
+---
+- name: Elastic CPM uitrollen op de centrale Elasticsearch
+  hosts: cpm
+  gather_facts: false
+  roles:
+    - elastic_cpm

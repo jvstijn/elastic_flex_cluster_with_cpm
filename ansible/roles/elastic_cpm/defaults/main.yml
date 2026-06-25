@@ -1,0 +1,14 @@
+---
+cpm_ml_detectors:
+  - { id: "cpm-store-size", file: "json/ml_anomaly_detectors_cpm-store-size.json" }
+  - { id: "cpm-jvm-heap", file: "json/ml_anomaly_detectors_cpm-jvm-heap.json" }
+  - { id: "cpm-shard-count", file: "json/ml_anomaly_detectors_cpm-shard-count.json" }
+  - { id: "cpm-cluster-event-rate", file: "json/ml_anomaly_detectors_cpm-cluster-event-rate.json" }
+  - { id: "cpm-event-rate", file: "json/ml_anomaly_detectors_cpm-event-rate.json" }
+
+cpm_ml_datafeeds:
+  - { id: "datafeed-cpm-store-size",         file: "json/ml_datafeed_cpm-store-size.json" }
+  - { id: "datafeed-cpm-jvm-heap",           file: "json/ml_datafeed_cpm-jvm-heap.json" }
+  - { id: "datafeed-cpm-shard-count",        file: "json/ml_datafeed_cpm-shard-count.json" }
+  - { id: "datafeed-cpm-cluster-event-rate", file: "json/ml_datafeed_cpm-cluster-event-rate.json" }
+  - { id: "datafeed-cpm-event-rate",         file: "json/ml_datafeed_cpm-event-rate.json" }

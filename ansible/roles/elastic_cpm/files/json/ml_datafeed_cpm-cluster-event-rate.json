@@ -1,0 +1,36 @@
+{
+  "job_id": "cpm-cluster-event-rate",
+  "indices": ["monitoring:.monitoring-es-8-*"],
+  "query": {
+    "bool": {
+      "filter": [
+        { "match_phrase": { "event.dataset": "elasticsearch.node.stats" } }
+      ]
+    }
+  },
+  "query_delay": "86807ms",
+  "chunking_config": { "mode": "manual", "time_span": "900000000ms" },
+  "indices_options": {
+    "ignore_unavailable": false,
+    "expand_wildcards": ["open"],
+    "allow_no_indices": true,
+    "ignore_throttled": true
+  },
+  "aggregations": {
+    "buckets": {
+      "date_histogram": { "field": "@timestamp", "fixed_interval": "15m" },
+      "aggregations": {
+        "@timestamp": { "max": { "field": "@timestamp" } },
+        "cluster_id": {
+          "terms": { "field": "elasticsearch.cluster.id", "size": 10 },
+          "aggregations": {
+            "write_queue_depth": { "avg": { "field": "elasticsearch.node.stats.thread_pool.write.queue.count" } },
+            "doc_count":         { "value_count": { "field": "@timestamp" } }
+          }
+        }
+      }
+    }
+  },
+  "scroll_size": 1000,
+  "delayed_data_check_config": { "enabled": true }
+}

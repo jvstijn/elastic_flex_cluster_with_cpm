@@ -14,3 +14,12 @@ certs.zip
 # Local archives
 ansible.tar.gz
 ansible.zip
+*.tar
+
+# Python
+__pycache__/
+*.pyc
+
+# Runtime / load-test logs and backups
+*.log
+*.old

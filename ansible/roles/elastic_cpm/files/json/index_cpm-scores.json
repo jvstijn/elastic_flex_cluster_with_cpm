@@ -1,0 +1,28 @@
+{
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "scored_at":              { "type": "date", "format": "strict_date_optional_time" },
+      "forecast_horizon_hours": { "type": "integer" },
+      "clusters": {
+        "type": "nested",
+        "dynamic": "strict",
+        "properties": {
+          "alert":                   { "type": "boolean" },
+          "cluster_id":              { "type": "keyword" },
+          "cluster_uuid":            { "type": "keyword" },
+          "disk_score":              { "type": "float" },
+          "disk_used_pct_current":   { "type": "float" },
+          "disk_used_pct_forecast":  { "type": "float" },
+          "jvm_heap_pct_forecast":   { "type": "float" },
+          "jvm_score":               { "type": "float" },
+          "load_score":              { "type": "float" },
+          "shard_count_forecast":    { "type": "long" },
+          "shard_score":             { "type": "float" },
+          "total_score":             { "type": "float" },
+          "write_queue_forecast":    { "type": "float" }
+        }
+      }
+    }
+  }
+}

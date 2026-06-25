@@ -1,0 +1,33 @@
+{
+  "description": "High mean JVM heap percent per cluster",
+  "analysis_config": {
+    "bucket_span": "15m",
+    "summary_count_field_name": "doc_count",
+    "detectors": [
+      {
+        "detector_description": "high_mean(heap_pct) partitionfield=cluster_id",
+        "function": "high_mean",
+        "field_name": "heap_pct",
+        "partition_field_name": "cluster_id"
+      }
+    ],
+    "influencers": ["cluster_id"],
+    "model_prune_window": "30d"
+  },
+  "analysis_limits": {
+    "model_memory_limit": "16mb",
+    "categorization_examples_limit": 4
+  },
+  "data_description": {
+    "time_field": "@timestamp",
+    "time_format": "epoch_ms"
+  },
+  "model_plot_config": {
+    "enabled": true,
+    "annotations_enabled": true
+  },
+  "model_snapshot_retention_days": 10,
+  "daily_model_snapshot_retention_after_days": 1,
+  "results_index_name": "shared",
+  "allow_lazy_open": false
+}

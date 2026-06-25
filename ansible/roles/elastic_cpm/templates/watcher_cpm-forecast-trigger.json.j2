@@ -1,0 +1,75 @@
+{
+  "trigger": {
+    "schedule": {
+      "interval": "1h"
+    }
+  },
+  "input": {
+    "none": {}
+  },
+  "condition": {
+    "always": {}
+  },
+  "actions": {
+    "forecast_cpm-store-size": {
+      "webhook": {
+        "scheme": "https",
+        "host": "{{ webhook_host }}",
+        "port": 9200,
+        "method": "post",
+        "path": "/_ml/anomaly_detectors/cpm-store-size/_forecast",
+        "params": {},
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Apikey {{ watcher_api_key.encoded  }}"
+        },
+        "body": """{"duration":"24h","expires_in":"48h"}"""
+      }
+    },
+    "forecast_cpm-jvm-heap": {
+      "webhook": {
+        "scheme": "https",
+        "host": "{{ webhook_host }}",
+        "port": 9200,
+        "method": "post",
+        "path": "/_ml/anomaly_detectors/cpm-jvm-heap/_forecast",
+        "params": {},
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Apikey {{ watcher_api_key.encoded  }}"
+        },
+        "body": """{"duration":"24h","expires_in":"48h"}"""
+      }
+    },
+    "forecast_cpm-shard-count": {
+      "webhook": {
+        "scheme": "https",
+        "host": "{{ webhook_host }}",
+        "port": 9200,
+        "method": "post",
+        "path": "/_ml/anomaly_detectors/cpm-shard-count/_forecast",
+        "params": {},
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Apikey {{ watcher_api_key.encoded  }}"
+        },
+        "body": """{"duration":"24h","expires_in":"48h"}"""
+      }
+    },
+    "forecast_cpm-cluster-event-rate": {
+      "webhook": {
+        "scheme": "https",
+        "host": "{{ webhook_host }}",
+        "port": 9200,
+        "method": "post",
+        "path": "/_ml/anomaly_detectors/cpm-cluster-event-rate/_forecast",
+        "params": {},
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Apikey {{ watcher_api_key.encoded  }}"
+        },
+        "body": """{"duration":"24h","expires_in":"48h"}"""
+      }
+    }
+  }
+}
