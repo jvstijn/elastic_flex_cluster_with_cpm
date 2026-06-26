@@ -14,8 +14,8 @@ extract_watches_argv_base:
   - --watch-spec
   - "{{ extract_watches_spec_file }}"
 
-extract_watches_argv_ssl: "{{ ['--verify-ssl'] if extract_watches_validate_certs else [] }}"
-extract_watches_argv_json: "{{ ['--write-json'] if extract_watches_write_json else [] }}"
+extract_watches_argv_ssl: "{{ ['--verify-ssl'] if (extract_watches_validate_certs | bool) else [] }}"
+extract_watches_argv_json: "{{ ['--write-json'] if (extract_watches_write_json | bool) else [] }}"
 
 extract_watches_argv_auth: >-
   {{

@@ -8,7 +8,16 @@ extract_watches_auth_method: "{{ 'basic' if (elastic_pw | default('')) | length 
 
 extract_watches_user: "{{ elastic_usr | default('elastic') }}"
 extract_watches_password: "{{ elastic_pw | default('') }}"
-extract_watches_api_key: ""
+# Falls back to cpm/cpm_settings.json when not set via -e or group_vars.
+extract_watches_settings_file: "{{ playbook_dir }}/../../../cpm/cpm_settings.json"
+extract_watches_api_key: >-
+  {{
+    (
+      lookup('file', extract_watches_settings_file, errors='ignore')
+      | default('{}', true)
+      | from_json
+    ).es_api_key | default('', true)
+  }}
 
 # Destination for elastic_cpm role templates.
 extract_watches_output_dir: "{{ playbook_dir }}/roles/elastic_cpm/templates"
