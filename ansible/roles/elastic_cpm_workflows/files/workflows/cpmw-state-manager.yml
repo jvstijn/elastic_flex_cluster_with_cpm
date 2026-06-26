@@ -58,6 +58,8 @@ steps:
                     - wildcard: { elasticsearch.index.name: ".ds-logs-*" }
                     - wildcard: { elasticsearch.index.name: ".ds-metrics-*" }
                     - wildcard: { elasticsearch.index.name: ".ds-traces-*" }
+                    - wildcard: { elasticsearch.index.name: ".ds-filebeat-*" }
+                    - wildcard: { elasticsearch.index.name: "filebeat-*" }
                   minimum_should_match: 1
         aggs:
           streams:
@@ -148,8 +150,9 @@ steps:
         dataset: >-
           {%- assign t = item.topic -%}{%- assign p5 = t | slice: 0,5 -%}{%- assign p8 = t | slice: 0,8 -%}{%- assign p7 = t | slice: 0,7 -%}
           {%- assign parts = t | split: '-' -%}{%- assign n = parts.size -%}
-          {%- if p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' -%}{%- assign dc = n | minus: 2 -%}{{ parts | slice: 1, dc | join: '-' }}{%- else -%}{%- assign dc = n | minus: 1 -%}{{ parts | slice: 0, dc | join: '-' }}{%- endif -%}
-        namespace: "{{ item.topic | split: '-' | last }}"
+          {%- if p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' -%}{%- assign dc = n | minus: 2 -%}{{ parts | slice: 1, dc | join: '-' }}{%- elsif n <= 1 -%}{{ t }}{%- else -%}{%- assign dc = n | minus: 1 -%}{{ parts | slice: 0, dc | join: '-' }}{%- endif -%}
+        namespace: >-
+          {%- assign parts = item.topic | split: '-' -%}{%- if parts.size <= 1 -%}default{%- else -%}{{ parts | last }}{%- endif -%}
         pipeline_type: "catchall"
         cluster_id: "{{ item.cluster_id }}"
         dc: >-
@@ -174,17 +177,21 @@ steps:
           {%- if reg -%}{{ reg.cluster_id }}{%- else -%}{%- endif -%}
         topic: >-
           {%- assign idx = item.key.index -%}{%- assign afterDs = idx | remove_first: '.ds-' -%}
+          {%- assign fb9 = afterDs | slice: 0, 9 -%}
+          {%- if fb9 == 'filebeat-' -%}filebeat{%- else -%}
           {%- assign parts = afterDs | split: '-' -%}{%- assign n = parts.size -%}{%- assign keep = n | minus: 2 -%}
-          {%- if keep >= 3 -%}{{ parts | slice: 0, keep | join: '-' }}{%- else -%}{%- endif -%}
+          {%- if keep >= 3 -%}{{ parts | slice: 0, keep | join: '-' }}{%- endif -%}
+          {%- endif -%}
         _keep: >-
           {%- assign managed = steps.dedicated.output | map: 'topic' -%}
           {%- assign existing = steps.existing_pairs.output | map: 'topic' -%}
           {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_uuid', item.key.cluster | first -%}
           {%- assign idx = item.key.index -%}{%- assign afterDs = idx | remove_first: '.ds-' -%}
+          {%- assign fb9 = afterDs | slice: 0, 9 -%}
           {%- assign parts = afterDs | split: '-' -%}{%- assign n = parts.size -%}{%- assign keep = n | minus: 2 -%}
-          {%- assign topic = '' -%}{%- if keep >= 3 -%}{%- assign topic = parts | slice: 0, keep | join: '-' -%}{%- endif -%}
+          {%- assign topic = '' -%}{%- if fb9 == 'filebeat-' -%}{%- assign topic = 'filebeat' -%}{%- elsif keep >= 3 -%}{%- assign topic = parts | slice: 0, keep | join: '-' -%}{%- endif -%}
           {%- assign st = parts | first -%}
-          {%- if topic == '' -%}no{%- elsif reg == nil -%}no{%- elsif st != 'logs' and st != 'metrics' and st != 'traces' -%}no{%- elsif managed contains topic -%}no{%- elsif existing contains topic -%}no{%- else -%}yes{%- endif -%}
+          {%- if topic == '' -%}no{%- elsif reg == nil -%}no{%- elsif topic != 'filebeat' and st != 'logs' and st != 'metrics' and st != 'traces' -%}no{%- elsif managed contains topic -%}no{%- elsif existing contains topic -%}no{%- else -%}yes{%- endif -%}
 
   - name: mon_pairs_keep
     type: data.filter
@@ -209,8 +216,9 @@ steps:
         dataset: >-
           {%- assign t = item.topic -%}{%- assign p5 = t | slice: 0,5 -%}{%- assign p8 = t | slice: 0,8 -%}{%- assign p7 = t | slice: 0,7 -%}
           {%- assign parts = t | split: '-' -%}{%- assign n = parts.size -%}
-          {%- if p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' -%}{%- assign dc = n | minus: 2 -%}{{ parts | slice: 1, dc | join: '-' }}{%- else -%}{%- assign dc = n | minus: 1 -%}{{ parts | slice: 0, dc | join: '-' }}{%- endif -%}
-        namespace: "{{ item.topic | split: '-' | last }}"
+          {%- if p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' -%}{%- assign dc = n | minus: 2 -%}{{ parts | slice: 1, dc | join: '-' }}{%- elsif n <= 1 -%}{{ t }}{%- else -%}{%- assign dc = n | minus: 1 -%}{{ parts | slice: 0, dc | join: '-' }}{%- endif -%}
+        namespace: >-
+          {%- assign parts = item.topic | split: '-' -%}{%- if parts.size <= 1 -%}default{%- else -%}{{ parts | last }}{%- endif -%}
         pipeline_type: "catchall"
         cluster_id: "{{ item.cluster_id }}"
         dc: >-
