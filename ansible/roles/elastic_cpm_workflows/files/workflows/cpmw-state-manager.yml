@@ -103,7 +103,7 @@ steps:
         pipeline_id: >-
           {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.suggested_cluster_id | first -%}
           {%- assign dc = 'default' -%}{%- if reg and reg.dc and reg.dc != '' -%}{%- assign dc = reg.dc -%}{%- endif -%}
-          {{ dc }}_cpm-dedicated-{{ item.suggested_cluster_id }}
+          {{ dc }}_cpmw-dedicated-{{ item.suggested_cluster_id }}
         updated_at: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
         _valid: >-
           {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.suggested_cluster_id | first -%}
@@ -162,7 +162,7 @@ steps:
         pipeline_id: >-
           {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.cluster_id | first -%}
           {%- assign dc = 'default' -%}{%- if reg and reg.dc and reg.dc != '' -%}{%- assign dc = reg.dc -%}{%- endif -%}
-          {{ dc }}_cpm-catchall-{{ item.cluster_id }}
+          {{ dc }}_cpmw-catchall-{{ item.cluster_id }}
         updated_at: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
 
   # === CATCHALL discovered from monitoring =================================
@@ -228,7 +228,7 @@ steps:
         pipeline_id: >-
           {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.cluster_id | first -%}
           {%- assign dc = 'default' -%}{%- if reg and reg.dc and reg.dc != '' -%}{%- assign dc = reg.dc -%}{%- endif -%}
-          {{ dc }}_cpm-catchall-{{ item.cluster_id }}
+          {{ dc }}_cpmw-catchall-{{ item.cluster_id }}
         updated_at: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
 
   # === Write all state entries ============================================
