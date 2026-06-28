@@ -66,7 +66,7 @@ steps:
             composite:
               size: 1000
               sources:
-                - cluster: { terms: { field: cluster_uuid } }
+                - cluster: { terms: { field: elasticsearch.cluster.id } }
                 - index: { terms: { field: elasticsearch.index.name } }
 
   # === DEDICATED pipelines (from routing suggestions) ======================
