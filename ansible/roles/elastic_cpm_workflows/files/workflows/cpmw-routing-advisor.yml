@@ -26,7 +26,7 @@ steps:
   type: elasticsearch.request
   with:
     method: POST
-    path: /.monitoring-es-8-*/_search
+    path: /monitoring:.monitoring-es-8-*/_search
     body:
       size: 0
       query:
