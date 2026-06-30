@@ -3,7 +3,10 @@
 CPM-managed Logstash pipelines.
 
 Index names are taken from the stack-monitoring data (default
-monitoring:.monitoring-es-8-mb*) so indices on remote clusters are included too.
+monitoring:.monitoring-es-8-mb*) so indices on remote clusters are included too,
+and only indices that run on an ACTIVE cluster (active=true in
+cpm-cluster-registry) are considered.
+
 For every data stream / filebeat index seen in monitoring in the last N hours
 (default 24) it determines:
 
@@ -21,7 +24,7 @@ Examples:
   ./check_index_pipeline_coverage.py --insecure
   ./check_index_pipeline_coverage.py --host https://es-central:9200 --ca-cert ca.crt
   ./check_index_pipeline_coverage.py --insecure --hours 24 --output coverage.txt
-  ./check_index_pipeline_coverage.py --insecure --monitoring-index ".monitoring-es-8-*"
+  ./check_index_pipeline_coverage.py --insecure --registry-index cpmw-cluster-registry
 """
 from __future__ import annotations
 
@@ -50,6 +53,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--insecure", action="store_true", help="Skip TLS verification (self-signed certs)")
     p.add_argument("--monitoring-index", default="monitoring:.monitoring-es-8-mb*",
                    help="Index pattern with the stack-monitoring data to read index names from")
+    p.add_argument("--registry-index", default="cpm-cluster-registry",
+                   help="Cluster registry index; only clusters with active=true are considered")
     p.add_argument("--hours", type=int, default=24,
                    help="Only consider indices seen in monitoring in the last N hours")
     p.add_argument("--namespace", help="Only consider data streams in this namespace (e.g. default)")
@@ -105,10 +110,30 @@ def _top(bucket_agg) -> str | None:
     return b[0]["key"] if b else None
 
 
+def active_clusters(call, registry_index: str):
+    """Return (active_uuids:set, active_names:set, found:bool) from the cluster registry."""
+    body = {"size": 1000, "query": {"term": {"active": True}},
+            "_source": ["cluster_id", "cluster_uuid", "cluster_name"]}
+    try:
+        res = call("POST", f"/{registry_index}/_search", body)
+    except urllib.error.HTTPError:
+        return set(), set(), False
+    uuids: set[str] = set()
+    names: set[str] = set()
+    for h in res.get("hits", {}).get("hits", []):
+        s = h.get("_source", {})
+        for k in ("cluster_uuid", "cluster_id"):
+            if s.get(k):
+                uuids.add(s[k])
+        if s.get("cluster_name"):
+            names.add(s["cluster_name"])
+    return uuids, names, True
+
+
 def monitored_datasets(call, hours: int, monitoring_index: str) -> dict[str, dict]:
     """Read index names + owning cluster from stack monitoring.
 
-    Returns {data_stream_name: {"clusters": set((cluster_name, uuid)), "docs": int}}.
+    Returns {data_stream_name: {(cluster_name, uuid): docs}}.
     """
     body = {
         "size": 0,
@@ -143,9 +168,8 @@ def monitored_datasets(call, hours: int, monitoring_index: str) -> dict[str, dic
         cname = _top(b.get("cname")) or "?"
         uuid = _top(b.get("cuuid")) or _top(b.get("cid")) or "?"
         docs = int((b.get("docs") or {}).get("value") or 0)
-        s = streams.setdefault(name, {"clusters": set(), "docs": 0})
-        s["clusters"].add((cname, uuid))
-        s["docs"] += docs
+        d = streams.setdefault(name, {})
+        d[(cname, uuid)] = d.get((cname, uuid), 0) + docs
     return streams
 
 
@@ -185,18 +209,37 @@ def main() -> int:
         for t in topics:
             topic_to_pipes.setdefault(t, set()).add(pid)
 
-    # --- 2. Index names + cluster from monitoring (last N hours) --------------
+    # --- 2. Active clusters from the registry --------------------------------
+    auuids, anames, reg_found = active_clusters(call, args.registry_index)
+    reg_note = ""
+    if not reg_found:
+        reg_note = f"registry {args.registry_index} not found - NOT filtering on active clusters"
+    elif not (auuids or anames):
+        reg_note = f"registry {args.registry_index} has no active clusters - result will be empty"
+
+    # --- 3. Index names + cluster from monitoring (last N hours) --------------
     try:
         streams = monitored_datasets(call, args.hours, args.monitoring_index)
     except urllib.error.HTTPError as e:
         return _fail(f"Could not query monitoring index {args.monitoring_index!r}: "
                      f"HTTP {e.code} {e.read().decode()[:200]}")
+
+    # keep only indices on an active cluster (when the registry is available)
+    if reg_found:
+        filtered: dict[str, dict] = {}
+        for name, clmap in streams.items():
+            keep = {k: v for k, v in clmap.items()
+                    if k[1] in auuids or k[0] in anames}
+            if keep:
+                filtered[name] = keep
+        streams = filtered
+
     routable = sorted(streams)
     if args.namespace:
         ns = args.namespace
         routable = [n for n in routable if n.endswith("-" + ns) or topic_for(n) == "filebeat"]
 
-    # --- 3. Build coverage ----------------------------------------------------
+    # --- 4. Build coverage ----------------------------------------------------
     rows = []  # (name, topic, cluster_str, uuid_str, docs, status, pipelines)
     used_topics: set[str] = set()
     covered = 0
@@ -204,17 +247,18 @@ def main() -> int:
         t = topic_for(n)
         pipes = sorted(topic_to_pipes.get(t, []))
         used_topics.add(t)
-        clusters = sorted(streams[n]["clusters"])
-        cluster_str = ",".join(c for c, _ in clusters) or "?"
-        uuid_str = ",".join(u for _, u in clusters) or "?"
+        clusters = sorted(streams[n])
+        cluster_str = ",".join(cn for cn, _ in clusters) or "?"
+        uuid_str = ",".join(uu for _, uu in clusters) or "?"
+        docs = sum(streams[n].values())
         status = "OK" if pipes else "MISSING"
         if pipes:
             covered += 1
-        rows.append((n, t, cluster_str, uuid_str, streams[n]["docs"], status, pipes))
+        rows.append((n, t, cluster_str, uuid_str, docs, status, pipes))
 
     orphan_topics = sorted(set(topic_to_pipes) - used_topics)
 
-    # --- 4. Build the report (screen + file) ---------------------------------
+    # --- 5. Build the report (screen + file) ---------------------------------
     report: list[str] = []
 
     def emit(line: str = "") -> None:
@@ -223,14 +267,18 @@ def main() -> int:
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     emit(f"CPM index <-> Logstash pipeline coverage   ({now})")
     emit(f"Host: {args.host}   |   monitoring: {args.monitoring_index}   |   window: last {args.hours}h")
-    emit(f"Logstash pipelines: {len(pipelines)}   |   indices in monitoring: {len(routable)}")
+    emit(f"Active-cluster registry: {args.registry_index}   "
+         f"(active clusters: {len(anames) if reg_found else '-'})")
+    if reg_note:
+        emit(f"NOTE: {reg_note}")
+    emit(f"Logstash pipelines: {len(pipelines)}   |   indices on active clusters: {len(routable)}")
 
     emit("\n=== Logstash pipelines (topics per pipeline) ===")
     for pid in sorted(pipe_topics):
         ts = sorted(pipe_topics[pid])
         emit(f"  {pid}  ({len(ts)} topics)")
         for t in ts:
-            tag = "" if any(topic_for(n) == t for n in routable) else "   [no monitored index]"
+            tag = "" if any(topic_for(n) == t for n in routable) else "   [no active index]"
             emit(f"      - {t}{tag}")
     if not pipe_topics:
         emit("  (no Logstash pipelines found)")
@@ -250,16 +298,16 @@ def main() -> int:
 
     emit("\n=== Summary ===")
     missing = [r[0] for r in rows if r[5] == "MISSING"]
-    emit(f"  indices in monitoring (last {args.hours}h) : {len(routable)}")
-    emit(f"  covered by a pipeline                : {covered}")
-    emit(f"  NOT covered (no pipeline)            : {len(missing)}")
+    emit(f"  indices on active clusters (last {args.hours}h) : {len(routable)}")
+    emit(f"  covered by a pipeline                     : {covered}")
+    emit(f"  NOT covered (no pipeline)                 : {len(missing)}")
     if missing:
         emit("  Indices without a pipeline (their topic is read by no pipeline):")
         for n in missing:
-            cl = ",".join(c for c, _ in sorted(streams[n]["clusters"]))
+            cl = ",".join(cn for cn, _ in sorted(streams[n]))
             emit(f"    - {n}   (topic: {topic_for(n)}, cluster: {cl})")
     if orphan_topics:
-        emit(f"\n  Orphan topics (in a pipeline, no monitored index): {len(orphan_topics)}")
+        emit(f"\n  Orphan topics (in a pipeline, no active index): {len(orphan_topics)}")
         for t in orphan_topics:
             emit(f"    - {t}   (in: {', '.join(sorted(topic_to_pipes[t]))})")
 
