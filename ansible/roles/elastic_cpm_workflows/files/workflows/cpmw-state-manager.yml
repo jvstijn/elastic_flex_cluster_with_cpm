@@ -125,12 +125,12 @@ steps:
         topic: >-
           {%- assign t = item._source.topic -%}
           {%- assign p5 = t | slice: 0,5 -%}{%- assign p8 = t | slice: 0,8 -%}{%- assign p7 = t | slice: 0,7 -%}
-          {%- if p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' -%}{{ t }}{%- else -%}{{ item._source.data_stream_type }}-{{ item._source.dataset }}-{{ item._source.namespace }}{%- endif -%}
+          {%- if p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' or t == 'filebeat' -%}{{ t }}{%- else -%}{{ item._source.data_stream_type }}-{{ item._source.dataset }}-{{ item._source.namespace }}{%- endif -%}
         _keep: >-
           {%- assign managed = steps.dedicated.output | map: 'topic' -%}
           {%- assign t = item._source.topic -%}
           {%- assign p5 = t | slice: 0,5 -%}{%- assign p8 = t | slice: 0,8 -%}{%- assign p7 = t | slice: 0,7 -%}
-          {%- unless p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' -%}{%- assign t = item._source.data_stream_type | append: '-' | append: item._source.dataset | append: '-' | append: item._source.namespace -%}{%- endunless -%}
+          {%- unless p5 == 'logs-' or p8 == 'metrics-' or p7 == 'traces-' or t == 'filebeat' -%}{%- assign t = item._source.data_stream_type | append: '-' | append: item._source.dataset | append: '-' | append: item._source.namespace -%}{%- endunless -%}
           {%- if item._source.pipeline_type == 'dedicated' -%}no{%- elsif item._source.data_stream_type == nil -%}no{%- elsif managed contains t -%}no{%- else -%}yes{%- endif -%}
 
   - name: existing_pairs
