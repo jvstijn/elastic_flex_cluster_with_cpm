@@ -9,5 +9,5 @@
     "queue.type": "persisted",
     "queue.max_bytes": "1gb"
   },
-  "template": "input {\r\n  kafka {\r\n    bootstrap_servers => \"__KAFKA_BOOTSTRAP__\"\r\n    topics => [__TOPICS_LIST__]\r\n    group_id => \"__GROUP_ID__\"\r\n    consumer_threads => __CONSUMER_THREADS__\r\n    codec => json\r\n    decorate_events => true\r\n  }\r\n}\r\n\r\noutput {\r\n  elasticsearch {\r\n    hosts => [__ES_HOSTS__]\r\n    data_stream => true\r\n    api_key => \"${__API_KEY_VAR__}\"\r\n    ssl_certificate_verification => true\r\n  }\r\n}"
+  "template": "input {\r\n  kafka {\r\n    bootstrap_servers => \"__KAFKA_BOOTSTRAP__\"\r\n    topics => [__TOPICS_LIST__]\r\n    group_id => \"__GROUP_ID__\"\r\n    consumer_threads => __CONSUMER_THREADS__\r\n    codec => json\r\n    decorate_events => true\r\n  }\r\n}\r\n\r\noutput {\r\n  if [@metadata][kafka][topic] == \"filebeat\" {\r\n    elasticsearch {\r\n      hosts => [__ES_HOSTS__]\r\n      index => \"filebeat-%{[agent][version]}\"\r\n      api_key => \"${__API_KEY_VAR__}\"\r\n      ssl_certificate_verification => true\r\n    }\r\n  } else {\r\n    elasticsearch {\r\n      hosts => [__ES_HOSTS__]\r\n      data_stream => true\r\n      api_key => \"${__API_KEY_VAR__}\"\r\n      ssl_certificate_verification => true\r\n    }\r\n  }\r\n}"
 }

@@ -11,6 +11,7 @@
       "shard_max_threshold":   { "type": "integer" },
       "write_queue_threshold": { "type": "long" },
       "ingest_hosts":          { "type": "keyword" },
+      "dc":                    { "type": "keyword" },
       "active":                { "type": "boolean" }
     }
   }

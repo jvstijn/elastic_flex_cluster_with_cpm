@@ -4,6 +4,15 @@
     "properties": {
       "scored_at":              { "type": "date", "format": "strict_date_optional_time" },
       "forecast_horizon_hours": { "type": "integer" },
+      "alert_threshold":        { "type": "float" },
+      "weights_applied": {
+        "properties": {
+          "disk":  { "type": "float" },
+          "jvm":   { "type": "float" },
+          "shard": { "type": "float" },
+          "load":  { "type": "float" }
+        }
+      },
       "clusters": {
         "type": "nested",
         "dynamic": "strict",
