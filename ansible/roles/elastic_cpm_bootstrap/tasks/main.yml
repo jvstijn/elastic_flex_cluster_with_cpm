@@ -1,0 +1,183 @@
+---
+- name: Execute cpm-registry-sync watcher
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_watcher/watch/cpm-registry-sync/_execute"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      record_execution: true
+    status_code: [200]
+  register: cpm_bootstrap_registry_sync
+
+- name: Patch cluster registry after sync
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/elastic_cpm/tasks/registry_patch.yml"
+
+- name: Execute cpm-scoring watcher
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_watcher/watch/cpm-scoring/_execute"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      record_execution: true
+    status_code: [200]
+
+- name: Execute cpm-routing-advisor watcher
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_watcher/watch/cpm-routing-advisor/_execute"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      record_execution: true
+    status_code: [200]
+
+- name: Load central cluster from registry
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-cluster-registry/_search"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      size: 1
+      query:
+        term:
+          cluster_name: "{{ cpm_bootstrap_central_cluster_name }}"
+    status_code: [200]
+  register: cpm_bootstrap_central
+
+- name: Seed logs-beats-raw central catchall pipeline state
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-pipeline-state/_doc/logs-beats-raw"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      data_stream_type: logs
+      dataset: beats
+      namespace: raw
+      pipeline_type: catchall
+      pipeline_id: "{{ cpm_bootstrap_central.json.hits.hits[0]._source.dc }}_cpm-catchall-{{ cpm_bootstrap_central.json.hits.hits[0]._source.cluster_id }}"
+      cluster_id: "{{ cpm_bootstrap_central.json.hits.hits[0]._source.cluster_id }}"
+      dc: "{{ cpm_bootstrap_central.json.hits.hits[0]._source.dc }}"
+      topic: logs-beats-raw
+      updated_at: "{{ ansible_date_time.iso8601 }}"
+    status_code: [200, 201]
+  when: cpm_bootstrap_central.json.hits.hits | length > 0
+
+- name: Execute cpm-state-manager watcher
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_watcher/watch/cpm-state-manager/_execute"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      record_execution: true
+    status_code: [200]
+
+- name: Patch cluster registry before pipeline push
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/elastic_cpm/tasks/registry_patch.yml"
+
+- name: List existing Logstash pipelines
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_logstash/pipeline"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+  register: cpm_existing_pipelines
+
+- name: Remove stale CPM Logstash pipelines
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_logstash/pipeline/{{ item.key }}"
+    method: DELETE
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 404]
+  loop: "{{ cpm_existing_pipelines.json | dict2items }}"
+  when: "'cpm-' in item.key or item.key == 'kafka-to-central'"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Execute cpm-pipeline-manager watcher
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_watcher/watch/cpm-pipeline-manager/_execute"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      record_execution: true
+    status_code: [200]
+  register: cpm_bootstrap_pipeline_manager
+
+- name: Remove bootstrap kafka-to-central pipeline
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_logstash/pipeline/kafka-to-central"
+    method: DELETE
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 404]
+  when: cpm_bootstrap_remove_kafka_pipeline | bool
+
+- name: Verify Logstash pipelines
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_logstash/pipeline"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+  register: cpm_bootstrap_pipelines_final
+
+- name: Show deployed Logstash pipelines
+  ansible.builtin.debug:
+    msg: "{{ cpm_bootstrap_pipelines_final.json.keys() | list }}"
+
+- name: Verify pipeline state entries
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-pipeline-state/_search"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      size: 10
+      sort:
+        - updated_at: desc
+    status_code: [200]
+  register: cpm_bootstrap_state
+
+- name: Show pipeline state count
+  ansible.builtin.debug:
+    msg: "pipeline state entries: {{ cpm_bootstrap_state.json.hits.total.value }}"

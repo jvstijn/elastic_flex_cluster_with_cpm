@@ -1,0 +1,16 @@
+---
+- name: Deploy CPM watchers
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_watcher/watch/{{ item.id }}"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body: "{{ lookup('template', item.file) }}"
+    status_code: [200, 201]
+  loop: "{{ cpm_watchers }}"
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [watchers]

@@ -1,17 +1,20 @@
 {
-  "description": "Ingest rate per dataset/namespace - proxy for ingest rate, bucket-safe for large clusters",
+  "description": "Cumulative indexing total per backing index - proxy for ingest rate",
   "analysis_config": {
     "bucket_span": "15m",
     "summary_count_field_name": "doc_count",
     "detectors": [
       {
-        "detector_description": "high_mean(index_total) by ds_group",
+        "detector_description": "high_mean(index_total) by index_name",
         "function": "high_mean",
         "field_name": "index_total",
-        "by_field_name": "ds_group"
+        "by_field_name": "index_name",
+        "detector_index": 0
       }
     ],
-    "influencers": ["ds_group"],
+    "influencers": [
+      "index_name"
+    ],
     "model_prune_window": "30d"
   },
   "analysis_limits": {
@@ -28,6 +31,5 @@
   },
   "model_snapshot_retention_days": 10,
   "daily_model_snapshot_retention_after_days": 1,
-  "results_index_name": "shared",
   "allow_lazy_open": false
 }

@@ -1,0 +1,5 @@
+---
+- hosts: cpm
+  gather_facts: true
+  roles:
+    - elastic_cpm_bootstrap

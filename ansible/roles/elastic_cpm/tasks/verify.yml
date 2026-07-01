@@ -1,0 +1,40 @@
+---
+- name: Verify ML jobs are opened
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/anomaly_detectors/{{ item.id }}/_stats"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+  loop: "{{ cpm_ml_detectors }}"
+  loop_control:
+    label: "{{ item.id }}"
+  register: cpm_verify_ml
+  tags: [verify, never]
+
+- name: Verify watchers exist
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_watcher/watch/{{ item.id }}"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+  loop: "{{ cpm_watchers }}"
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [verify, never]
+
+- name: Verify global routing config
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-routing-config/_doc/_global"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+  tags: [verify, never]

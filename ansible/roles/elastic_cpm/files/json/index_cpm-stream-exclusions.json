@@ -1,0 +1,24 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "topic_pattern": {
+        "type": "keyword"
+      },
+      "reason": {
+        "type": "keyword"
+      },
+      "updated_at": {
+        "type": "date",
+        "format": "strict_date_optional_time"
+      },
+      "updated_by": {
+        "type": "keyword"
+      }
+    }
+  }
+}

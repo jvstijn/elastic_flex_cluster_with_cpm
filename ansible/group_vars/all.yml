@@ -1,26 +1,31 @@
 ---
 # ===========================================================================
-# Variabelen voor de role 'elastic_cpm'.
-# De waarden worden zoveel mogelijk rechtstreeks uit de project-.env gelezen
-# (../.env t.o.v. dit playbook), zodat er één bron van waarheid is.
+# Variables for elastic_cpm role.
+# Values are read from the project .env where possible.
 # ===========================================================================
 
-# --- Verbinding met de centrale Elasticsearch ------------------------------
-# Ansible draait op de docker-host. De central ES-node is daar bereikbaar op
-# de poort die docker-compose publiceert (.env -> ES_CENTRAL_PORT).
 elastic_usr: elastic
-
-# Wachtwoord van de 'elastic' user, gelezen uit .env (ELASTIC_PASSWORD).
 elastic_pw: "{{ lookup('ini', 'ELASTIC_PASSWORD type=properties file=' ~ playbook_dir ~ '/../.env') }}"
-
-# Gepubliceerde host-poort van de central ES (.env -> ES_CENTRAL_PORT).
 es_central_port: "{{ lookup('ini', 'ES_CENTRAL_PORT type=properties file=' ~ playbook_dir ~ '/../.env') }}"
-
-# Basis-URL die de role gebruikt voor alle API-calls. SSL met self-signed
-# certificaten -> de role draait met validate_certs: false.
 elastic_base_url: "https://localhost:{{ es_central_port }}"
 
-# --- Watcher webhook -------------------------------------------------------
-# De watchers draaien IN de es-central container en roepen Elasticsearch
-# intern aan via de docker-netwerk alias 'es-central' op poort 9200.
+# Watchers run inside es-central and call ES via docker network alias
 webhook_host: es-central
+
+cpm_monitoring_index: ".monitoring-es-8-*"
+cpm_ml_reinstall: false
+cpm_clean_indices: false
+cpm_datafeed_start: ""
+
+# Patch registry after install/bootstrap (cluster_name keys)
+cpm_cluster_registry:
+  central-cluster:
+    ingest_hosts: "https://es-central:9200"
+    dc: "dc-central"
+  remote-a:
+    ingest_hosts: "https://es-remote-a:9200"
+    dc: "dc-a"
+  remote-b:
+    ingest_hosts: "https://es-remote-b:9200"
+    dc: "dc-b"
+

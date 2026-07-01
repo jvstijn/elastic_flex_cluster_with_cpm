@@ -8,10 +8,13 @@
         "detector_description": "high_mean(shards_total) partitionfield=cluster_id",
         "function": "high_mean",
         "field_name": "shards_total",
-        "partition_field_name": "cluster_id"
+        "partition_field_name": "cluster_id",
+        "detector_index": 0
       }
     ],
-    "influencers": ["cluster_id"],
+    "influencers": [
+      "cluster_id"
+    ],
     "model_prune_window": "30d"
   },
   "analysis_limits": {
@@ -28,6 +31,5 @@
   },
   "model_snapshot_retention_days": 10,
   "daily_model_snapshot_retention_after_days": 1,
-  "results_index_name": "shared",
   "allow_lazy_open": false
 }

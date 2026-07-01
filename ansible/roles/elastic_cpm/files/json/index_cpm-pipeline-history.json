@@ -1,0 +1,51 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "stream_key": {
+        "type": "keyword"
+      },
+      "data_stream_type": {
+        "type": "keyword"
+      },
+      "dataset": {
+        "type": "keyword"
+      },
+      "namespace": {
+        "type": "keyword"
+      },
+      "pipeline_type": {
+        "type": "keyword"
+      },
+      "pipeline_id": {
+        "type": "keyword"
+      },
+      "cluster_id": {
+        "type": "keyword"
+      },
+      "cluster_name": {
+        "type": "keyword"
+      },
+      "previous_cluster_id": {
+        "type": "keyword"
+      },
+      "topic": {
+        "type": "keyword"
+      },
+      "dc": {
+        "type": "keyword"
+      },
+      "move_detected": {
+        "type": "boolean"
+      },
+      "recorded_at": {
+        "type": "date",
+        "format": "strict_date_optional_time"
+      }
+    }
+  }
+}

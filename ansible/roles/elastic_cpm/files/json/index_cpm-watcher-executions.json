@@ -1,0 +1,34 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "watch_id": {
+        "type": "keyword"
+      },
+      "executed_at": {
+        "type": "date",
+        "format": "strict_date_optional_time"
+      },
+      "execution_state": {
+        "type": "keyword"
+      },
+      "successful": {
+        "type": "boolean"
+      },
+      "failed_actions": {
+        "type": "keyword"
+      },
+      "source": {
+        "type": "keyword"
+      },
+      "recorded_at": {
+        "type": "date",
+        "format": "strict_date_optional_time"
+      }
+    }
+  }
+}

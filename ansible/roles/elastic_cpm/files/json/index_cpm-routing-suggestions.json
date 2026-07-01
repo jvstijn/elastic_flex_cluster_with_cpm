@@ -1,0 +1,85 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "suggested_at": {
+        "type": "date"
+      },
+      "clusters_total": {
+        "type": "integer"
+      },
+      "threshold_used": {
+        "type": "float"
+      },
+      "dataset": {
+        "type": "keyword"
+      },
+      "data_stream_type": {
+        "type": "keyword"
+      },
+      "namespace": {
+        "type": "keyword"
+      },
+      "source_cluster": {
+        "type": "keyword"
+      },
+      "source_cluster_id": {
+        "type": "keyword"
+      },
+      "source_score": {
+        "type": "float"
+      },
+      "suggested_cluster_id": {
+        "type": "keyword"
+      },
+      "target_score": {
+        "type": "float"
+      },
+      "event_rate_1h": {
+        "type": "long"
+      },
+      "reason": {
+        "type": "keyword"
+      },
+      "suggestions": {
+        "type": "nested",
+        "properties": {
+          "current_cluster_id": {
+            "type": "keyword"
+          },
+          "dataset": {
+            "type": "keyword"
+          },
+          "event_rate_1h": {
+            "type": "long"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "namespace": {
+            "type": "keyword"
+          },
+          "overloaded_cluster": {
+            "type": "keyword"
+          },
+          "overloaded_score": {
+            "type": "float"
+          },
+          "reason": {
+            "type": "keyword"
+          },
+          "suggested_cluster_id": {
+            "type": "keyword"
+          },
+          "target_score": {
+            "type": "float"
+          }
+        }
+      }
+    }
+  }
+}

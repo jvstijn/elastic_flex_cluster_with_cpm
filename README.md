@@ -23,25 +23,28 @@ docker compose up -d
 
 Wait for `init` to complete (trial license, CCS, bootstrap pipeline).
 
-## CPM setup
+## CPM setup (Ansible)
+
+```bash
+cd ansible
+ansible-playbook site.yml
+ansible-playbook bootstrap.yml
+```
+
+Requires Stack Monitoring data in `.monitoring-es-8-*` on es-central. Configure `cpm_cluster_registry` in `ansible/group_vars/all.yml` with `ingest_hosts` and `dc` per cluster.
+
+Optional backfill for ML history:
+
+```bash
+python3 ../docker/scripts/backfill_monitoring_history.py
+```
+
+### Legacy Python installer (deprecated)
 
 ```bash
 cd cpm
-python3 -m venv .venv && source .venv/bin/activate
-pip install requests
-cp cpm_settings.json.example cpm_settings.json   # or copy docker/cpm_settings.docker.json.example
-# Fill es_api_key (see cpm/README.md)
-# docker-ca.crt in cpm/ is used automatically for https://localhost:9200
-
-python3 cpm_install.py
-python3 ../docker/scripts/backfill_monitoring_history.py   # optional: 7d ML history
-python3 ../docker/scripts/bootstrap_cpm_pipelines.py         # templates + routing + pipelines
-```
-
-Or in one step after ML models are ready:
-
-```bash
-python3 cpm_install.py --bootstrap
+python3 cpm_install.py          # use ansible/site.yml instead
+python3 ../scripts/bootstrap_cpm_pipelines.py
 ```
 
 ## What bootstrap does

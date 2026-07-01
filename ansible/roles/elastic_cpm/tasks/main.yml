@@ -1,281 +1,42 @@
 ---
 - include_vars: ../defaults/required_vars.yml
 
-# Het onderstaande blok zorgt ervoor dat alle benodigde componenten in Elastic worden geinstalleerd
-- name: Blok om setup central pipeline management
-  #tags: never
+- name: Install CPM on central Elasticsearch
   block:
-    - name: Create CPM indices
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/{{ item.name }}"
-        method: PUT
-        user: "{{ elastic_usr }}"
-        password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        body_format: json
-        body: "{{ lookup('file', item.file) }}"
-        status_code: [200, 201, 400]
-      loop:
-        - { name: "cpm-cluster-registry", file: "json/index_cpm-cluster-registry.json" }
-        - { name: "cpm-scores", file: "json/index_cpm-scores.json" }
-    
-    - name: Check if CPM ML anomaly detectors exist
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/_ml/anomaly_detectors/{{ item.id }}"
-        method: GET
-        user: "{{ elastic_usr }}"
-        password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        status_code: [200, 404]
-      loop: "{{ cpm_ml_detectors }}"
-      loop_control:
-        label: "{{ item.id }}"
-      register: cpm_anomaly_detectors_check
-    
-    - name: Create CPM ML anomaly detectors (alleen als ze nog niet bestaan)
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/_ml/anomaly_detectors/{{ item.item.id }}"
-        method: PUT
-        user: "{{ elastic_usr }}"
-        password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        body_format: json
-        body: "{{ lookup('file', item.item.file) }}"
-        status_code: [200, 201]
-      loop: "{{ cpm_anomaly_detectors_check.results }}"
-      when: item.status == 404
-      loop_control:
-        label: "{{ item.item.id }}"
+    - name: Probe Stack Monitoring field paths
+      ansible.builtin.include_tasks: monitoring_fields.yml
+      tags: [probe, always]
 
-    #    - name: Create CPM ML anomaly detectors
-    #      ansible.builtin.uri:
-    #        url: "{{ elastic_base_url }}/_ml/anomaly_detectors/{{ item.id }}"
-    #        method: PUT
-    #        user: "{{ elastic_usr }}"
-    #        password: "{{ elastic_pw }}"
-    #        force_basic_auth: true
-    #        validate_certs: false
-    #        body_format: json
-    #        body: "{{ lookup('file', item.file) }}"
-    #        status_code: [200, 201, 400]
-    #      loop:
-    #        - { id: "cpm-store-size", file: "json/ml_anomaly_detectors_cpm-store-size.json" }
-    #        - { id: "cpm-jvm-heap", file: "json/ml_anomaly_detectors_cpm-jvm-heap.json" }
-    #        - { id: "cpm-shard-count", file: "json/ml_anomaly_detectors_cpm-shard-count.json" }
-    #        - { id: "cpm-cluster-event-rate", file: "json/ml_anomaly_detectors_cpm-cluster-event-rate.json" }
-    #        - { id: "cpm-event-rate", file: "json/ml_anomaly_detectors_cpm-event-rate.json" }
-    #    
-    #    - name: Create CPM ML datafeeds
-    #      ansible.builtin.uri:
-    #        url: "{{ elastic_base_url }}/_ml/datafeeds/{{ item.id }}"
-    #        method: PUT
-    #        user: "{{ elastic_usr }}"
-    #        password: "{{ elastic_pw }}"
-    #        force_basic_auth: true
-    #        validate_certs: false
-    #        body_format: json
-    #        body: "{{ lookup('file', item.file) }}"
-    #        status_code: [200, 201, 400]
-    #      loop:
-    #        - { id: "datafeed-cpm-store-size", file: "json/ml_datafeed_cpm-store-size.json" }
-    #        - { id: "datafeed-cpm-jvm-heap", file: "json/ml_datafeed_cpm-jvm-heap.json" }
-    #        - { id: "datafeed-cpm-shard-count", file: "json/ml_datafeed_cpm-shard-count.json" }
-    #        - { id: "datafeed-cpm-cluster-event-rate", file: "json/ml_datafeed_cpm-cluster-event-rate.json" }
-    #        - { id: "datafeed-cpm-event-rate", file: "json/ml_datafeed_cpm-event-rate.json" }
-    #    
+    - name: Create config indices
+      ansible.builtin.include_tasks: indices.yml
+      tags: [indices]
 
-    - name: Check if CPM ML datafeeds exist
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/_ml/datafeeds/{{ item.id }}"
-        method: GET
-        user: "{{ elastic_usr }}"
-        password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        status_code: [200, 404]
-      loop: "{{ cpm_ml_datafeeds }}"
-      loop_control:
-        label: "{{ item.id }}"
-      register: cpm_ml_datafeed_check
+    - name: Install ML jobs and datafeeds
+      ansible.builtin.include_tasks: ml.yml
+      tags: [ml]
 
-    - name: Create CPM ML datafeeds (alleen als ze nog niet bestaan)
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/_ml/datafeeds/{{ item.item.id }}"
-        method: PUT
-        user: "{{ elastic_usr }}"
-        password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        body_format: json
-        body: "{{ lookup('file', item.item.file) }}"
-        status_code: [200, 201]
-      loop: "{{ cpm_ml_datafeed_check.results }}"
-      when: item.status == 404
-      loop_control:
-        label: "{{ item.item.id }}"
+    - name: Install ingest pipeline and transform
+      ansible.builtin.include_tasks: ingest_transform.yml
+      tags: [transform]
 
-    - name: Check CPM ML job state
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/_ml/anomaly_detectors/{{ item.id }}/_stats"
-        method: GET
-        user: "{{ elastic_usr }}"
-        password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        status_code: [200]
-      loop: "{{ cpm_ml_detectors }}"
-      loop_control:
-        label: "{{ item.id }}"
-      register: cpm_ml_detectors_state
+    - name: Create watcher webhook API key
+      ansible.builtin.include_tasks: watcher_api_key.yml
+      tags: [watchers]
 
-    - name: Open CPM ML anomaly detector jobs (alleen als ze nog niet open zijn)
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/_ml/anomaly_detectors/{{ item.item.id }}/_open"
-        method: POST
-        user: "{{ elastic_usr }}"
-        password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        status_code: [200]
-      loop: "{{ cpm_ml_detectors_state.results }}"
-      when: item.json.jobs[0].state not in ["opened", "opening"]
-      loop_control:
-        label: "{{ item.item.id }}"
+    - name: Deploy watchers
+      ansible.builtin.include_tasks: watchers.yml
+      tags: [watchers]
 
-    - name: Start CPM ML datafeeds
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/_ml/datafeeds/{{ item.id }}/_start"
-        method: POST
-        user: "{{ elastic_usr }}"
-        password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        status_code: [200, 409]
-      loop: "{{ cpm_ml_datafeeds }}"
-      loop_control:
-        label: "{{ item.id }}"
+    - name: Seed templates and routing defaults
+      ansible.builtin.include_tasks: seed_data.yml
+      tags: [seed]
 
-    - name: Zoek oude keys
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/_security/_query/api_key"
-        method: GET
-        user: "{{ elastic_usr }}"
-        password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        body_format: json
-        body: '{
-                 "query": {
-                   "bool": {
-                     "must": [
-                       { "term": { "name": "cpm-watcher-webhook" } },
-                       { "term": { "invalidated": false } }
-                     ]
-                   }
-                 }
-               }'
-      register: old_keys
+    - name: Patch cluster registry from inventory
+      ansible.builtin.include_tasks: registry_patch.yml
+      tags: [registry]
 
-    - name: creeer de api_key voor de watcher webhook
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/_security/api_key"
-        url_username: "{{ elastic_usr }}"
-        url_password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        method: POST
-        body_format: json
-        body: '{
-                 "name": "cpm-watcher-webhook",
-                 "role_descriptors": {
-                   "cpm": {
-                     "cluster": [
-                       "manage_ml",
-                       "manage_logstash_pipelines",
-                       "manage"
-                     ],
-                     "indices": [
-                       {
-                         "names": [
-                           "*"
-                         ],
-                         "privileges": [
-                           "all"
-                         ],
-                         "allow_restricted_indices": false
-                       }
-                     ],
-                     "applications": [],
-                     "run_as": [],
-                     "metadata": {},
-                     "transient_metadata": {
-                       "enabled": true
-                     }
-                   }
-                 }
-               }'
-        return_content: true
-      register: new_api_output
-
-    - name: Delete oude keys
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/_security/api_key"
-        method: DELETE
-        url_username: "{{ elastic_usr }}"
-        url_password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        body_format: json
-        body:
-          ids: "{{ old_keys.json.api_keys | map(attribute='id') | list }}"
-      when: old_keys.json.api_keys | length > 0
-
-    - name: Zet de nieuwe api_key in variabele watcher_api_key
-      ansible.builtin.set_fact:
-        watcher_api_key: "{{ new_api_output.json }}"
-
-    - name: display inventory_hostname_short
-      ansible.builtin.debug: var=watcher_api_key.encoded
-
-    - name: Create CPM watchers
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/_watcher/watch/{{ item.id }}"
-        method: PUT
-        user: "{{ elastic_usr }}"
-        password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        body_format: json
-        body: "{{ lookup('template', item.file) }}"
-        status_code: [200, 201]
-      loop:
-        - { id: "cpm-register-sync", file: "watcher_cpm-register-sync.json.j2" }
-        - { id: "cpm-forecast-trigger", file: "watcher_cpm-forecast-trigger.json.j2" }
-        - { id: "cpm-scoring", file: "watcher_cpm-scoring.json.j2" }
-        - { id: "cpm-routing-advisor", file: "watcher_cpm-routing-advisor.json.j2" }
-        - { id: "cpm-pipeline-manager", file: "watcher_cpm-pipeline-manager.json.j2" }
-        - { id: "cpm-state-manager", file: "watcher_cpm-state-manager.json.j2" }
-
-    - name: Index CPM pipeline templates
-      ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/cpm-pipeline-templates/_doc/{{ item.id }}"
-        method: PUT
-        user: "{{ elastic_usr }}"
-        password: "{{ elastic_pw }}"
-        force_basic_auth: true
-        validate_certs: false
-        body_format: json
-        body: "{{ lookup('file', item.file) }}"
-        status_code: [200, 201]
-      loop:
-        - { id: "catchall",  file: "json/cpm-pipeline-template-catchall.json" }
-        - { id: "dedicated", file: "json/cpm-pipeline-template-dedicated.json" }
-      loop_control:
-        label: "{{ item.id }}"
+    - name: Verify CPM installation
+      ansible.builtin.include_tasks: verify.yml
+      tags: [verify, never]
 
   run_once: true
-# end-block
-

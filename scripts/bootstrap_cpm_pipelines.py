@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bootstrap CPM pipeline chain for the local Docker stack.
+"""Bootstrap CPM pipeline chain - DEPRECATED: use ansible/bootstrap.yml
 
 Seeds templates, syncs registry, patches ingest_hosts/dc, runs the full watcher
 chain, and removes the bootstrap kafka-to-central pipeline.

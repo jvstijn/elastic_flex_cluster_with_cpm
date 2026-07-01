@@ -1,0 +1,206 @@
+---
+- name: Compute default datafeed start (now-2d UTC)
+  ansible.builtin.command: date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ
+  register: cpm_default_start
+  changed_when: false
+  when: cpm_datafeed_start | length == 0
+  tags: [ml]
+
+- name: Set effective datafeed start
+  ansible.builtin.set_fact:
+    cpm_effective_datafeed_start: "{{ cpm_datafeed_start if (cpm_datafeed_start | length > 0) else cpm_default_start.stdout }}"
+  tags: [ml]
+
+- name: Stop and delete ML datafeeds on reinstall
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/datafeeds/{{ item.id }}/_stop?force=true"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 404]
+  loop: "{{ cpm_ml_datafeeds }}"
+  loop_control:
+    label: "{{ item.id }}"
+  when: cpm_ml_reinstall | bool
+  tags: [ml, ml_reinstall]
+
+- name: Close and delete ML jobs on reinstall
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/anomaly_detectors/{{ item.id }}/_close?force=true"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 404]
+  loop: "{{ cpm_ml_detectors }}"
+  loop_control:
+    label: "{{ item.id }}"
+  when: cpm_ml_reinstall | bool
+  tags: [ml, ml_reinstall]
+
+- name: Delete ML datafeeds on reinstall
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/datafeeds/{{ item.id }}"
+    method: DELETE
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 404]
+  loop: "{{ cpm_ml_datafeeds }}"
+  loop_control:
+    label: "{{ item.id }}"
+  when: cpm_ml_reinstall | bool
+  tags: [ml, ml_reinstall]
+
+- name: Delete ML anomaly detectors on reinstall
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/anomaly_detectors/{{ item.id }}"
+    method: DELETE
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 404]
+  loop: "{{ cpm_ml_detectors }}"
+  loop_control:
+    label: "{{ item.id }}"
+  when: cpm_ml_reinstall | bool
+  tags: [ml, ml_reinstall]
+
+- name: Check if CPM ML anomaly detectors exist
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/anomaly_detectors/{{ item.id }}"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 404]
+  loop: "{{ cpm_ml_detectors }}"
+  loop_control:
+    label: "{{ item.id }}"
+  register: cpm_anomaly_detectors_check
+  tags: [ml]
+
+- name: Create CPM ML anomaly detectors
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/anomaly_detectors/{{ item.item.id }}"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body: "{{ lookup('file', role_path + '/files/' + item.item.file) }}"
+    status_code: [200, 201]
+  loop: "{{ cpm_anomaly_detectors_check.results }}"
+  when: cpm_ml_reinstall | bool or item.status == 404
+  loop_control:
+    label: "{{ item.item.id }}"
+  tags: [ml]
+
+- name: Initialize adapted datafeed bodies map
+  ansible.builtin.set_fact:
+    cpm_datafeed_bodies: {}
+  tags: [ml]
+
+- name: Build adapted datafeed bodies
+  ansible.builtin.set_fact:
+    cpm_datafeed_bodies: "{{ cpm_datafeed_bodies | default({}) | combine({item.id: cpm_adapted_datafeed}) }}"
+  vars:
+    cpm_raw_datafeed: "{{ lookup('file', role_path + '/files/' + item.file) }}"
+    cpm_adapted_datafeed: >-
+      {{ cpm_raw_datafeed
+         | replace('elasticsearch.cluster.id', cpm_field_cluster_id)
+         | replace('elasticsearch.node.stats.jvm.mem.heap.used.pct', cpm_field_heap)
+         | replace('elasticsearch.cluster.stats.indices.shards.count', cpm_field_shards)
+         | replace('elasticsearch.node.stats.thread_pool.write.queue.count', cpm_field_write_queue | default('elasticsearch.node.stats.thread_pool.write.queue.count'))
+         | replace('.monitoring-es-8-*', cpm_monitoring_index)
+         | from_json }}
+  loop: "{{ cpm_ml_datafeeds }}"
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [ml]
+
+- name: Check if CPM ML datafeeds exist
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/datafeeds/{{ item.id }}"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 404]
+  loop: "{{ cpm_ml_datafeeds }}"
+  loop_control:
+    label: "{{ item.id }}"
+  register: cpm_ml_datafeed_check
+  tags: [ml]
+
+- name: Create CPM ML datafeeds
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/datafeeds/{{ item.item.id }}"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body: "{{ cpm_datafeed_bodies[item.item.id] }}"
+    status_code: [200, 201]
+  loop: "{{ cpm_ml_datafeed_check.results }}"
+  when: cpm_ml_reinstall | bool or item.status == 404
+  loop_control:
+    label: "{{ item.item.id }}"
+  tags: [ml]
+
+- name: Check CPM ML job state
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/anomaly_detectors/{{ item.id }}/_stats"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+  loop: "{{ cpm_ml_detectors }}"
+  loop_control:
+    label: "{{ item.id }}"
+  register: cpm_ml_detectors_state
+  tags: [ml]
+
+- name: Open CPM ML anomaly detector jobs
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/anomaly_detectors/{{ item.item.id }}/_open"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+  loop: "{{ cpm_ml_detectors_state.results }}"
+  when: item.json.jobs[0].state not in ['opened', 'opening']
+  loop_control:
+    label: "{{ item.item.id }}"
+  tags: [ml]
+
+- name: Start CPM ML datafeeds
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/datafeeds/{{ item.id }}/_start"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      start: "{{ cpm_effective_datafeed_start }}"
+    status_code: [200, 409]
+  loop: "{{ cpm_ml_datafeeds }}"
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [ml]

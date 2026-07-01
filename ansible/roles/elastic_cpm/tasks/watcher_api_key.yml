@@ -1,0 +1,67 @@
+---
+- name: Query existing cpm-watcher-webhook API keys
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_security/_query/api_key"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      query:
+        bool:
+          must:
+            - term:
+                name: cpm-watcher-webhook
+            - term:
+                invalidated: false
+    status_code: [200]
+  register: old_keys
+  tags: [watchers]
+
+- name: Create cpm-watcher-webhook API key
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_security/api_key"
+    url_username: "{{ elastic_usr }}"
+    url_password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    method: POST
+    body_format: json
+    body:
+      name: cpm-watcher-webhook
+      role_descriptors:
+        cpm:
+          cluster:
+            - manage_ml
+            - manage_logstash_pipelines
+            - manage
+          indices:
+            - names: ["*"]
+              privileges: [all]
+              allow_restricted_indices: false
+    return_content: true
+    status_code: [200, 201]
+  register: new_api_output
+  tags: [watchers]
+
+- name: Delete old cpm-watcher-webhook API keys
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_security/api_key"
+    method: DELETE
+    url_username: "{{ elastic_usr }}"
+    url_password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      ids: "{{ old_keys.json.api_keys | map(attribute='id') | list }}"
+    status_code: [200]
+  when: old_keys.json.api_keys | length > 0
+  tags: [watchers]
+
+- name: Store watcher webhook API key
+  ansible.builtin.set_fact:
+    watcher_api_key: "{{ new_api_output.json }}"
+  tags: [watchers]

@@ -1,0 +1,48 @@
+---
+- name: Delete CPM indices when clean requested
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/{{ item.name }}"
+    method: DELETE
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200, 404]
+  loop: "{{ cpm_indices }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: cpm_clean_indices | bool
+  tags: [clean]
+
+- name: Create CPM config indices
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/{{ item.name }}"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body: "{{ lookup('file', role_path + '/files/' + item.file) }}"
+    status_code: [200, 201, 400]
+  loop: "{{ cpm_indices }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [indices]
+
+- name: Upgrade CPM index mappings
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/{{ item.name }}/_mapping"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      properties: "{{ (lookup('file', role_path + '/files/' + item.file) | from_json).mappings.properties }}"
+    status_code: [200, 201, 400]
+  loop: "{{ cpm_indices }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [indices]

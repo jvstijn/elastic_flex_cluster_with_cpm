@@ -32,9 +32,9 @@ DEFAULT_SPECS: list[dict[str, Any]] = [
     {"watch_id": "cpm-routing-advisor", "template": "watcher_cpm-routing-advisor.json.j2", "style": "inline", "alt_watch_ids": []},
     {
         "watch_id": "cpm-registry-sync",
-        "template": "watcher_cpm-register-sync.json.j2",
+        "template": "watcher_cpm-registry-sync.json.j2",
         "style": "inline",
-        "alt_watch_ids": ["cpm-register-sync"],
+        "alt_watch_ids": ["cpm-registry-sync", "cpm-register-sync"],
     },
     {"watch_id": "cpm-pipeline-manager", "template": "watcher_cpm-pipeline-manager.json.j2", "style": "split", "alt_watch_ids": []},
     {"watch_id": "cpm-state-manager", "template": "watcher_cpm-state-manager.json.j2", "style": "scheme", "alt_watch_ids": []},

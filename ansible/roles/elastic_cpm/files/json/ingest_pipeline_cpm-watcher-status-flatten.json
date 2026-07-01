@@ -1,0 +1,46 @@
+{
+  "description": "Flatten Elasticsearch Watcher history docs for the CPM dashboard",
+  "processors": [
+    {
+      "set": {
+        "field": "executed_at",
+        "copy_from": "@timestamp"
+      }
+    },
+    {
+      "set": {
+        "field": "recorded_at",
+        "copy_from": "@timestamp"
+      }
+    },
+    {
+      "set": {
+        "field": "source",
+        "value": "watcher-history"
+      }
+    },
+    {
+      "script": {
+        "lang": "painless",
+        "source": "def status = ctx.status; def execState = status != null && status.execution_state != null ? status.execution_state : (ctx.state != null ? ctx.state : 'unknown'); boolean ok = true; def failed = new ArrayList(); if (status != null && status.actions != null) { for (def entry : status.actions.entrySet()) { def last = entry.getValue().last_execution; if (last != null && last.successful == false) { ok = false; failed.add(entry.getKey()); } } } if (execState == 'failed' || execState == 'execution_failed') ok = false; ctx.execution_state = execState; ctx.successful = ok; ctx.failed_actions = failed;"
+      }
+    },
+    {
+      "remove": {
+        "field": [
+          "status",
+          "result",
+          "input",
+          "condition",
+          "trigger_event",
+          "messages",
+          "node",
+          "user",
+          "state",
+          "@timestamp"
+        ],
+        "ignore_missing": true
+      }
+    }
+  ]
+}

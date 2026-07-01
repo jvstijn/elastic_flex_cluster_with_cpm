@@ -1,14 +1,50 @@
 ---
+cpm_monitoring_index: ".monitoring-es-8-*"
+cpm_ml_reinstall: false
+cpm_clean_indices: false
+
+# ISO8601; empty = playbook computes now-2d at runtime
+cpm_datafeed_start: ""
+
+cpm_indices:
+  - { name: cpm-cluster-registry, file: json/index_cpm-cluster-registry.json }
+  - { name: cpm-routing-config, file: json/index_cpm-routing-config.json }
+  - { name: cpm-stream-exclusions, file: json/index_cpm-stream-exclusions.json }
+  - { name: cpm-scores, file: json/index_cpm-scores.json }
+  - { name: cpm-bytes-per-event, file: json/index_cpm-bytes-per-event.json }
+  - { name: cpm-routing-suggestions, file: json/index_cpm-routing-suggestions.json }
+  - { name: cpm-pipeline-templates, file: json/index_cpm-pipeline-templates.json }
+  - { name: cpm-pipeline-state, file: json/index_cpm-pipeline-state.json }
+  - { name: cpm-pipeline-history, file: json/index_cpm-pipeline-history.json }
+  - { name: cpm-watcher-executions, file: json/index_cpm-watcher-executions.json }
+  - { name: cpm-stream-coverage, file: json/index_cpm-stream-coverage.json }
+  - { name: cpm-cluster-scores, file: json/index_cpm-cluster-scores.json }
+
 cpm_ml_detectors:
-  - { id: "cpm-store-size", file: "json/ml_anomaly_detectors_cpm-store-size.json" }
-  - { id: "cpm-jvm-heap", file: "json/ml_anomaly_detectors_cpm-jvm-heap.json" }
-  - { id: "cpm-shard-count", file: "json/ml_anomaly_detectors_cpm-shard-count.json" }
-  - { id: "cpm-cluster-event-rate", file: "json/ml_anomaly_detectors_cpm-cluster-event-rate.json" }
-  - { id: "cpm-event-rate", file: "json/ml_anomaly_detectors_cpm-event-rate.json" }
+  - { id: cpm-event-rate, file: json/ml_anomaly_detectors_cpm-event-rate.json }
+  - { id: cpm-store-size, file: json/ml_anomaly_detectors_cpm-store-size.json }
+  - { id: cpm-jvm-heap, file: json/ml_anomaly_detectors_cpm-jvm-heap.json }
+  - { id: cpm-shard-count, file: json/ml_anomaly_detectors_cpm-shard-count.json }
+  - { id: cpm-cluster-event-rate, file: json/ml_anomaly_detectors_cpm-cluster-event-rate.json }
 
 cpm_ml_datafeeds:
-  - { id: "datafeed-cpm-store-size",         file: "json/ml_datafeed_cpm-store-size.json" }
-  - { id: "datafeed-cpm-jvm-heap",           file: "json/ml_datafeed_cpm-jvm-heap.json" }
-  - { id: "datafeed-cpm-shard-count",        file: "json/ml_datafeed_cpm-shard-count.json" }
-  - { id: "datafeed-cpm-cluster-event-rate", file: "json/ml_datafeed_cpm-cluster-event-rate.json" }
-  - { id: "datafeed-cpm-event-rate",         file: "json/ml_datafeed_cpm-event-rate.json" }
+  - { id: datafeed-cpm-event-rate, file: json/ml_datafeed_datafeed-cpm-event-rate.json }
+  - { id: datafeed-cpm-store-size, file: json/ml_datafeed_datafeed-cpm-store-size.json }
+  - { id: datafeed-cpm-jvm-heap, file: json/ml_datafeed_datafeed-cpm-jvm-heap.json }
+  - { id: datafeed-cpm-shard-count, file: json/ml_datafeed_datafeed-cpm-shard-count.json }
+  - { id: datafeed-cpm-cluster-event-rate, file: json/ml_datafeed_datafeed-cpm-cluster-event-rate.json }
+
+cpm_watchers:
+  - { id: cpm-registry-sync, file: watcher_cpm-registry-sync.json.j2 }
+  - { id: cpm-forecast-trigger, file: watcher_cpm-forecast-trigger.json.j2 }
+  - { id: cpm-scoring, file: watcher_cpm-scoring.json.j2 }
+  - { id: cpm-routing-advisor, file: watcher_cpm-routing-advisor.json.j2 }
+  - { id: cpm-state-manager, file: watcher_cpm-state-manager.json.j2 }
+  - { id: cpm-pipeline-manager, file: watcher_cpm-pipeline-manager.json.j2 }
+
+cpm_pipeline_templates:
+  - { id: catchall, file: json/cpm-pipeline-template-catchall.json }
+  - { id: dedicated, file: json/cpm-pipeline-template-dedicated.json }
+
+# Optional: patch ingest_hosts / dc after registry-sync (see group_vars)
+cpm_cluster_registry: {}

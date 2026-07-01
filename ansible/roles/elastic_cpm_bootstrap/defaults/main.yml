@@ -1,0 +1,3 @@
+---
+cpm_bootstrap_remove_kafka_pipeline: true
+cpm_bootstrap_central_cluster_name: central-cluster
