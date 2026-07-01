@@ -81,6 +81,17 @@ docker exec dod-elastic-kafka-1 /opt/kafka/bin/kafka-topics.sh \
 De topics `test-dataset` en `dead-letter-queue` worden aangemaakt door
 `scripts/create_kafka_topics.py` (die ze altijd meeneemt).
 
+`test-dataset` vullen met de eerder gegenereerde testdata (1 event per data
+stream uit de stack-monitoring van de afgelopen 24u):
+
+```bash
+python3 scripts/seed_test_dataset.py --insecure          # of --dry-run
+```
+
+Elk event krijgt een `data_stream`-object dat uit de data-stream-naam wordt
+afgeleid; de router routeert het naar het bijbehorende topic of naar de DLQ als
+dat topic niet bestaat.
+
 **Geverifieerd** — 6 testevents in `test-dataset`: 4 met bestaand doel-topic
 (`logs-system.auth-default`, `logs-winlog.winlog-prd`,
 `metrics-nginx.stubstatus-default`, `logs-nginx-prod`) kwamen elk correct aan; 2
