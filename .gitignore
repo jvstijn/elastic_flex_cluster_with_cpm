@@ -23,3 +23,6 @@ __pycache__/
 # Runtime / load-test logs and backups
 *.log
 *.old
+
+# Generated coverage reports
+index_pipeline_coverage_*.txt
