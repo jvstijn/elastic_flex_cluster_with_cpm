@@ -1,0 +1,116 @@
+{
+  "attributes": {
+    "title": "CPM \u2014 Platform overview",
+    "description": "CPM \u2014 Platform overview",
+    "panelsJSON": "[{\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 0, \"w\": 48, \"h\": 6, \"i\": \"c9a47ef4-de5e-51fe-b3ae-38f09f8da050\"}, \"panelIndex\": \"c9a47ef4-de5e-51fe-b3ae-38f09f8da050\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_0\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 6, \"w\": 48, \"h\": 12, \"i\": \"b08ad054-fee3-529e-b3c6-a7b5c148e707\"}, \"panelIndex\": \"b08ad054-fee3-529e-b3c6-a7b5c148e707\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_1\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 18, \"w\": 8, \"h\": 8, \"i\": \"d7eeb9e4-68a0-56e9-9786-e1ad385482c7\"}, \"panelIndex\": \"d7eeb9e4-68a0-56e9-9786-e1ad385482c7\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_2\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 8, \"y\": 18, \"w\": 8, \"h\": 8, \"i\": \"d1e2e845-64db-57c5-8ce1-a01a4c56beb1\"}, \"panelIndex\": \"d1e2e845-64db-57c5-8ce1-a01a4c56beb1\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_3\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 16, \"y\": 18, \"w\": 8, \"h\": 8, \"i\": \"f1329f6e-d923-59d8-b5cf-4c9d32a76bcc\"}, \"panelIndex\": \"f1329f6e-d923-59d8-b5cf-4c9d32a76bcc\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_4\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 24, \"y\": 18, \"w\": 8, \"h\": 8, \"i\": \"d65076e9-83b3-5674-bf52-982325e629f1\"}, \"panelIndex\": \"d65076e9-83b3-5674-bf52-982325e629f1\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_5\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 32, \"y\": 18, \"w\": 8, \"h\": 8, \"i\": \"38ebd535-27b9-5152-befc-1f8a5766ccee\"}, \"panelIndex\": \"38ebd535-27b9-5152-befc-1f8a5766ccee\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_6\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 40, \"y\": 18, \"w\": 8, \"h\": 8, \"i\": \"966908c8-3b44-5bc7-b035-8f8dffc70833\"}, \"panelIndex\": \"966908c8-3b44-5bc7-b035-8f8dffc70833\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_7\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 26, \"w\": 24, \"h\": 8, \"i\": \"831b0001-7b45-56a8-9ccb-54c507e2d138\"}, \"panelIndex\": \"831b0001-7b45-56a8-9ccb-54c507e2d138\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_8\"}, {\"version\": \"8.19.0\", \"type\": \"search\", \"gridData\": {\"x\": 24, \"y\": 26, \"w\": 24, \"h\": 8, \"i\": \"66267984-1103-5cad-bedd-59a623ef5111\"}, \"panelIndex\": \"66267984-1103-5cad-bedd-59a623ef5111\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_9\"}, {\"version\": \"8.19.0\", \"type\": \"search\", \"gridData\": {\"x\": 0, \"y\": 34, \"w\": 48, \"h\": 10, \"i\": \"40c68326-2baa-5225-acec-a278f28132c0\"}, \"panelIndex\": \"40c68326-2baa-5225-acec-a278f28132c0\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_10\"}, {\"version\": \"8.19.0\", \"type\": \"search\", \"gridData\": {\"x\": 0, \"y\": 44, \"w\": 32, \"h\": 10, \"i\": \"0fcd079f-0469-57a9-a348-17a0bb35d6dd\"}, \"panelIndex\": \"0fcd079f-0469-57a9-a348-17a0bb35d6dd\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_11\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 32, \"y\": 44, \"w\": 16, \"h\": 10, \"i\": \"c2c37df3-43ab-5169-b0bd-933d19b3d277\"}, \"panelIndex\": \"c2c37df3-43ab-5169-b0bd-933d19b3d277\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_12\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 54, \"w\": 48, \"h\": 6, \"i\": \"29299354-b55c-5866-9192-be3f1460dd8f\"}, \"panelIndex\": \"29299354-b55c-5866-9192-be3f1460dd8f\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_13\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 60, \"w\": 8, \"h\": 6, \"i\": \"0c553b44-c6ac-5898-957b-e15715bea223\"}, \"panelIndex\": \"0c553b44-c6ac-5898-957b-e15715bea223\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_14\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 8, \"y\": 60, \"w\": 40, \"h\": 6, \"i\": \"37b2ecda-f78f-52bd-89b1-312e5cd949de\"}, \"panelIndex\": \"37b2ecda-f78f-52bd-89b1-312e5cd949de\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_15\"}, {\"version\": \"8.19.0\", \"type\": \"search\", \"gridData\": {\"x\": 0, \"y\": 66, \"w\": 48, \"h\": 12, \"i\": \"82a7f832-bd47-5c01-bd3d-ea565b0fab75\"}, \"panelIndex\": \"82a7f832-bd47-5c01-bd3d-ea565b0fab75\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_16\"}, {\"version\": \"8.19.0\", \"type\": \"search\", \"gridData\": {\"x\": 0, \"y\": 78, \"w\": 48, \"h\": 14, \"i\": \"26bc5e61-8fce-5160-a568-9d21ae0830ce\"}, \"panelIndex\": \"26bc5e61-8fce-5160-a568-9d21ae0830ce\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_17\"}, {\"version\": \"8.19.0\", \"type\": \"search\", \"gridData\": {\"x\": 0, \"y\": 92, \"w\": 48, \"h\": 10, \"i\": \"ce0be7e5-a4f3-5c0c-a9c1-6fd54addcaea\"}, \"panelIndex\": \"ce0be7e5-a4f3-5c0c-a9c1-6fd54addcaea\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_18\"}]",
+    "optionsJSON": "{\"useMargins\": true, \"syncColors\": false, \"syncCursor\": true, \"syncTooltips\": false, \"hidePanelTitles\": false}",
+    "version": 1,
+    "timeRestore": true,
+    "timeTo": "now",
+    "timeFrom": "now-7d",
+    "refreshInterval": {
+      "pause": true,
+      "value": 0
+    },
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"language\": \"kuery\", \"query\": \"\"}, \"filter\": []}"
+    }
+  },
+  "references": [
+    {
+      "name": "panel_0",
+      "type": "visualization",
+      "id": "cpm-vis-nav-overview"
+    },
+    {
+      "name": "panel_1",
+      "type": "visualization",
+      "id": "cpm-vis-watcher-chain"
+    },
+    {
+      "name": "panel_2",
+      "type": "visualization",
+      "id": "cpm-vis-active-count"
+    },
+    {
+      "name": "panel_3",
+      "type": "visualization",
+      "id": "cpm-vis-inactive-count"
+    },
+    {
+      "name": "panel_4",
+      "type": "visualization",
+      "id": "cpm-vis-watcher-ok"
+    },
+    {
+      "name": "panel_5",
+      "type": "visualization",
+      "id": "cpm-vis-watcher-fail"
+    },
+    {
+      "name": "panel_6",
+      "type": "visualization",
+      "id": "cpm-vis-streams-managed"
+    },
+    {
+      "name": "panel_7",
+      "type": "visualization",
+      "id": "cpm-vis-streams-unmanaged"
+    },
+    {
+      "name": "panel_8",
+      "type": "visualization",
+      "id": "cpm-vis-cluster-status-pie"
+    },
+    {
+      "name": "panel_9",
+      "type": "search",
+      "id": "cpm-search-watcher-status"
+    },
+    {
+      "name": "panel_10",
+      "type": "search",
+      "id": "cpm-search-clusters"
+    },
+    {
+      "name": "panel_11",
+      "type": "search",
+      "id": "cpm-search-cluster-scores"
+    },
+    {
+      "name": "panel_12",
+      "type": "visualization",
+      "id": "cpm-vis-cluster-load-bar"
+    },
+    {
+      "name": "panel_13",
+      "type": "visualization",
+      "id": "cpm-vis-routing-weights-md"
+    },
+    {
+      "name": "panel_14",
+      "type": "visualization",
+      "id": "cpm-vis-stream-lock-count"
+    },
+    {
+      "name": "panel_15",
+      "type": "visualization",
+      "id": "cpm-vis-stream-locks-link"
+    },
+    {
+      "name": "panel_16",
+      "type": "search",
+      "id": "cpm-search-routing-suggestions"
+    },
+    {
+      "name": "panel_17",
+      "type": "search",
+      "id": "cpm-search-stream-coverage"
+    },
+    {
+      "name": "panel_18",
+      "type": "search",
+      "id": "cpm-search-stream-unmanaged"
+    }
+  ]
+}

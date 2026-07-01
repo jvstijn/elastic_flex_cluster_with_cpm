@@ -1,18 +1,47 @@
 {
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
   "mappings": {
     "dynamic": "strict",
     "properties": {
-      "cluster_uuid":          { "type": "keyword" },
-      "cluster_id":            { "type": "keyword" },
-      "cluster_name":          { "type": "keyword" },
-      "disk_total_bytes":      { "type": "long" },
-      "heap_max_bytes":        { "type": "long" },
-      "node_count":            { "type": "integer" },
-      "shard_max_threshold":   { "type": "integer" },
-      "write_queue_threshold": { "type": "long" },
-      "ingest_hosts":          { "type": "keyword" },
-      "dc":                    { "type": "keyword" },
-      "active":                { "type": "boolean" }
+      "active": {
+        "type": "boolean"
+      },
+      "cluster_id": {
+        "type": "keyword"
+      },
+      "cluster_name": {
+        "type": "keyword"
+      },
+      "cluster_uuid": {
+        "type": "keyword"
+      },
+      "disk_total_bytes": {
+        "type": "long"
+      },
+      "heap_max_bytes": {
+        "type": "long"
+      },
+      "ingest_hosts": {
+        "type": "keyword"
+      },
+      "ingest_capacity_per_day": {
+        "type": "long"
+      },
+      "node_count": {
+        "type": "integer"
+      },
+      "shard_max_threshold": {
+        "type": "integer"
+      },
+      "write_queue_threshold": {
+        "type": "long"
+      },
+      "dc": {
+        "type": "keyword"
+      }
     }
   }
 }

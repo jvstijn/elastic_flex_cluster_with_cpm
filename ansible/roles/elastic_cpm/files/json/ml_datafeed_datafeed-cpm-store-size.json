@@ -1,0 +1,67 @@
+{
+  "query_delay": "68561ms",
+  "chunking_config": {
+    "mode": "manual",
+    "time_span": "900000000ms"
+  },
+  "indices_options": {
+    "ignore_unavailable": false,
+    "expand_wildcards": [
+      "open"
+    ],
+    "allow_no_indices": true,
+    "ignore_throttled": true
+  },
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "match_phrase": {
+            "event.dataset": "elasticsearch.cluster.stats"
+          }
+        }
+      ]
+    }
+  },
+  "indices": [
+    ".monitoring-es-8-*"
+  ],
+  "aggregations": {
+    "buckets": {
+      "date_histogram": {
+        "field": "@timestamp",
+        "fixed_interval": "15m"
+      },
+      "aggregations": {
+        "@timestamp": {
+          "max": {
+            "field": "@timestamp"
+          }
+        },
+        "cluster_id": {
+          "terms": {
+            "field": "elasticsearch.cluster.id",
+            "size": 10
+          },
+          "aggregations": {
+            "store_size_bytes": {
+              "max": {
+                "field": "elasticsearch.cluster.stats.indices.store.size.bytes"
+              }
+            },
+            "doc_count": {
+              "value_count": {
+                "field": "@timestamp"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "scroll_size": 1000,
+  "delayed_data_check_config": {
+    "enabled": true
+  },
+  "job_id": "cpm-store-size"
+}

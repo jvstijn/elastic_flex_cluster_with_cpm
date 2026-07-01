@@ -1,0 +1,36 @@
+{
+  "source": {
+    "index": [
+      ".watcher-history-*"
+    ],
+    "query": {
+      "terms": {
+        "watch_id": [
+          "cpm-forecast-trigger",
+          "cpm-registry-sync",
+          "cpm-scoring",
+          "cpm-routing-advisor",
+          "cpm-state-manager",
+          "cpm-pipeline-manager"
+        ]
+      }
+    }
+  },
+  "dest": {
+    "index": "cpm-watcher-executions",
+    "pipeline": "cpm-watcher-status-flatten"
+  },
+  "latest": {
+    "unique_key": [
+      "watch_id"
+    ],
+    "sort": "@timestamp"
+  },
+  "frequency": "1m",
+  "sync": {
+    "time": {
+      "field": "@timestamp",
+      "delay": "30s"
+    }
+  }
+}

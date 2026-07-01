@@ -1,0 +1,36 @@
+{
+  "attributes": {
+    "title": "Stream coverage per cluster",
+    "description": "",
+    "columns": [
+      "cluster_name",
+      "index_name",
+      "stream_key",
+      "topic",
+      "cpm_managed",
+      "management_status",
+      "pipeline_id",
+      "recorded_at"
+    ],
+    "sort": [
+      [
+        "cluster_name",
+        "asc"
+      ],
+      [
+        "index_name",
+        "asc"
+      ]
+    ],
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-stream-coverage"
+    }
+  ]
+}

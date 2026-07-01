@@ -1,0 +1,31 @@
+{
+  "attributes": {
+    "title": "CPM clusters",
+    "description": "",
+    "columns": [
+      "cluster_name",
+      "active",
+      "cluster_id",
+      "dc",
+      "ingest_hosts",
+      "node_count",
+      "disk_total_bytes"
+    ],
+    "sort": [
+      [
+        "cluster_name",
+        "asc"
+      ]
+    ],
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-cluster-registry"
+    }
+  ]
+}

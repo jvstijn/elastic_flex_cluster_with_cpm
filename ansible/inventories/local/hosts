@@ -1,0 +1,3 @@
+# Jan docker-compose demo (3 clusters on localhost published ports)
+[cpm]
+localhost ansible_connection=local

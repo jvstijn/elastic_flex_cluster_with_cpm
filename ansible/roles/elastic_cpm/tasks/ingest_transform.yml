@@ -1,0 +1,86 @@
+---
+- name: Install CPM watcher status ingest pipeline
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ingest/pipeline/cpm-watcher-status-flatten"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body: "{{ lookup('file', role_path + '/files/json/ingest_pipeline_cpm-watcher-status-flatten.json') }}"
+    status_code: [200, 201]
+  tags: [transform]
+
+- name: Check watcher status transform exists
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    status_code: [200, 404]
+  register: cpm_transform_exists
+  tags: [transform]
+
+- name: Install CPM watcher status transform
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body: "{{ lookup('file', role_path + '/files/json/transform_cpm-watcher-status-sync.json') }}"
+    status_code: [200, 201]
+  when: cpm_transform_exists.status == 404
+  tags: [transform]
+
+- name: Check watcher status transform state
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync/_stats"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    status_code: [200]
+  register: cpm_transform_stats
+  tags: [transform]
+
+- name: Reset failed watcher status transform
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync/_stop?force=true&wait_for_completion=true"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    status_code: [200]
+  when: cpm_transform_stats.json.transforms[0].state == 'failed'
+  tags: [transform]
+
+- name: Reset transform checkpoint after failure
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync/_reset"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    status_code: [200]
+  when: cpm_transform_stats.json.transforms[0].state == 'failed'
+  tags: [transform]
+
+- name: Start watcher status transform
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync/_start"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    status_code: [200, 409]
+  tags: [transform]

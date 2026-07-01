@@ -1,0 +1,178 @@
+---
+- name: Resolve monitoring search URL
+  ansible.builtin.set_fact:
+    cpm_monitoring_search_url: "{{ lookup('template', 'cpm_monitoring_search_url.j2') | trim }}"
+
+- name: Probe monitoring cluster ID field
+  ansible.builtin.uri:
+    url: "{{ cpm_monitoring_search_url }}"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body:
+      size: 1
+      query:
+        bool:
+          filter:
+            - match_phrase:
+                event.dataset: elasticsearch.cluster.stats
+      _source:
+        - cluster_uuid
+        - elasticsearch.cluster.id
+    status_code: [200]
+  register: cpm_probe_cluster_id
+
+- name: Set cluster ID field fact
+  ansible.builtin.set_fact:
+    cpm_field_cluster_id: >-
+      {{ 'cluster_uuid' if 'cluster_uuid' in (cpm_probe_cluster_id.json.hits.hits[0]._source | default({}))
+      else 'elasticsearch.cluster.id' }}
+  when: cpm_probe_cluster_id.json.hits.hits | length > 0
+
+- name: Probe JVM heap field candidates
+  ansible.builtin.uri:
+    url: "{{ cpm_monitoring_search_url }}"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body:
+      size: 0
+      query:
+        bool:
+          filter:
+            - match_phrase:
+                event.dataset: elasticsearch.node.stats
+      aggs:
+        probe:
+          max:
+            field: "{{ item }}"
+    status_code: [200]
+  loop: "{{ cpm_field_heap_candidates }}"
+  register: cpm_probe_heap
+  failed_when: false
+
+- name: Pick JVM heap field
+  ansible.builtin.set_fact:
+    cpm_field_heap: "{{ item.item }}"
+  loop: "{{ cpm_probe_heap.results }}"
+  when:
+    - cpm_field_heap is not defined
+    - item.json is defined
+    - ((item.json.aggregations | default({})).probe | default({})).value is defined
+    - ((item.json.aggregations | default({})).probe | default({})).value is not none
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Probe shard count field candidates
+  ansible.builtin.uri:
+    url: "{{ cpm_monitoring_search_url }}"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body:
+      size: 0
+      query:
+        bool:
+          filter:
+            - match_phrase:
+                event.dataset: elasticsearch.cluster.stats
+      aggs:
+        probe:
+          max:
+            field: "{{ item }}"
+    status_code: [200]
+  loop: "{{ cpm_field_shards_candidates }}"
+  register: cpm_probe_shards
+  failed_when: false
+
+- name: Pick shard count field
+  ansible.builtin.set_fact:
+    cpm_field_shards: "{{ item.item }}"
+  loop: "{{ cpm_probe_shards.results }}"
+  when:
+    - cpm_field_shards is not defined
+    - item.json is defined
+    - ((item.json.aggregations | default({})).probe | default({})).value is defined
+    - ((item.json.aggregations | default({})).probe | default({})).value is not none
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Probe write queue field
+  ansible.builtin.uri:
+    url: "{{ cpm_monitoring_search_url }}"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body:
+      size: 1
+      query:
+        bool:
+          filter:
+            - match_phrase:
+                event.dataset: elasticsearch.node.stats
+      _source:
+        - node_stats.thread_pool.write.queue
+        - elasticsearch.node.stats.thread_pool.write.queue.count
+    status_code: [200]
+  register: cpm_probe_write_queue
+
+- name: Set write queue field fact
+  ansible.builtin.set_fact:
+    cpm_field_write_queue: >-
+      {{ 'node_stats.thread_pool.write.queue'
+         if 'node_stats' in (cpm_probe_write_queue.json.hits.hits[0]._source | default({}))
+         else 'elasticsearch.node.stats.thread_pool.write.queue.count' }}
+  when: cpm_probe_write_queue.json.hits.hits | length > 0
+
+- name: Apply default heap field when probe inconclusive
+  ansible.builtin.set_fact:
+    cpm_field_heap: "{{ cpm_field_heap_default }}"
+  when: cpm_field_heap is not defined
+
+- name: Apply default shards field when probe inconclusive
+  ansible.builtin.set_fact:
+    cpm_field_shards: "{{ cpm_field_shards_default }}"
+  when: cpm_field_shards is not defined
+
+- name: Apply default cluster ID field when probe inconclusive
+  ansible.builtin.set_fact:
+    cpm_field_cluster_id: "{{ cpm_field_cluster_id_default }}"
+  when: cpm_field_cluster_id is not defined
+
+- name: Fail when required monitoring fields are missing
+  ansible.builtin.fail:
+    msg: >-
+      Could not resolve monitoring field paths (cluster_id={{ cpm_field_cluster_id | default('?') }},
+      heap={{ cpm_field_heap | default('?') }}, shards={{ cpm_field_shards | default('?') }}).
+      Ensure Stack Monitoring data exists in {{ cpm_monitoring_index }}.
+  when: >-
+    cpm_field_cluster_id is not defined or cpm_field_heap is not defined or cpm_field_shards is not defined
+
+- name: Build field substitution map
+  ansible.builtin.set_fact:
+    cpm_field_substitutions:
+      elasticsearch.cluster.id: "{{ cpm_field_cluster_id }}"
+      elasticsearch.node.stats.jvm.mem.heap.used.pct: "{{ cpm_field_heap }}"
+      elasticsearch.cluster.stats.indices.shards.count: "{{ cpm_field_shards }}"
+      elasticsearch.node.stats.thread_pool.write.queue.count: "{{ cpm_field_write_queue | default('elasticsearch.node.stats.thread_pool.write.queue.count') }}"
+
+- name: Show resolved monitoring fields
+  ansible.builtin.debug:
+    msg:
+      cluster_id: "{{ cpm_field_cluster_id }}"
+      heap: "{{ cpm_field_heap }}"
+      shards: "{{ cpm_field_shards }}"
+      write_queue: "{{ cpm_field_write_queue | default('(default)') }}"
+      monitoring_index: "{{ cpm_monitoring_index }}"

@@ -1,0 +1,30 @@
+---
+cpm_env_file: "{{ playbook_dir }}/../.env"
+
+elastic_usr: elastic
+elastic_pw: "{{ lookup('ini', 'ELASTIC_PASSWORD type=properties file=' ~ cpm_env_file) }}"
+kibana_password: "{{ lookup('ini', 'KIBANA_PASSWORD type=properties file=' ~ cpm_env_file) }}"
+
+es_central_port: "{{ lookup('ini', 'ES_CENTRAL_PORT type=properties file=' ~ cpm_env_file) }}"
+elastic_base_url: "https://localhost:{{ es_central_port }}"
+kibana_base_url: "http://localhost:{{ lookup('ini', 'KIBANA_PORT type=properties file=' ~ cpm_env_file) }}"
+cpm_validate_certs: false
+
+webhook_host: es-central
+webhook_port: 9200
+
+cpm_monitoring_index: ".monitoring-es-8-*"
+cpm_ml_reinstall: false
+cpm_clean_indices: false
+cpm_datafeed_start: ""
+
+cpm_cluster_registry:
+  central-cluster:
+    ingest_hosts: "https://es-central:9200"
+    dc: dc-central
+  remote-a:
+    ingest_hosts: "https://es-remote-a:9200"
+    dc: dc-a
+  remote-b:
+    ingest_hosts: "https://es-remote-b:9200"
+    dc: dc-b

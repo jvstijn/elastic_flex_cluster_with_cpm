@@ -1,0 +1,36 @@
+{
+  "attributes": {
+    "title": "CPM \u2014 Current pipeline assignments",
+    "description": "CPM \u2014 Current pipeline assignments",
+    "panelsJSON": "[{\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 0, \"w\": 48, \"h\": 6, \"i\": \"8d57245f-19d3-53c0-b83c-51920921ad0a\"}, \"panelIndex\": \"8d57245f-19d3-53c0-b83c-51920921ad0a\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_0\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 6, \"w\": 48, \"h\": 4, \"i\": \"2c4af50b-bd55-5b69-9f6f-3e224754063f\"}, \"panelIndex\": \"2c4af50b-bd55-5b69-9f6f-3e224754063f\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_1\"}, {\"version\": \"8.19.0\", \"type\": \"search\", \"gridData\": {\"x\": 0, \"y\": 10, \"w\": 48, \"h\": 28, \"i\": \"5d118d96-43dc-57df-a8ee-8feddc87e1a2\"}, \"panelIndex\": \"5d118d96-43dc-57df-a8ee-8feddc87e1a2\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_2\"}]",
+    "optionsJSON": "{\"useMargins\": true, \"syncColors\": false, \"syncCursor\": true, \"syncTooltips\": false, \"hidePanelTitles\": false}",
+    "version": 1,
+    "timeRestore": false,
+    "timeTo": "now",
+    "timeFrom": "now-7d",
+    "refreshInterval": {
+      "pause": true,
+      "value": 0
+    },
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"language\": \"kuery\", \"query\": \"\"}, \"filter\": []}"
+    }
+  },
+  "references": [
+    {
+      "name": "panel_0",
+      "type": "visualization",
+      "id": "cpm-vis-nav-assignments"
+    },
+    {
+      "name": "panel_1",
+      "type": "visualization",
+      "id": "cpm-vis-pipeline-assignments-intro"
+    },
+    {
+      "name": "panel_2",
+      "type": "search",
+      "id": "cpm-search-pipeline-state"
+    }
+  ]
+}

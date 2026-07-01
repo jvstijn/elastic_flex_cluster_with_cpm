@@ -1,0 +1,52 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "cluster_id": {
+        "type": "keyword"
+      },
+      "cluster_uuid": {
+        "type": "keyword"
+      },
+      "cluster_name": {
+        "type": "keyword"
+      },
+      "scored_at": {
+        "type": "date",
+        "format": "strict_date_optional_time"
+      },
+      "recorded_at": {
+        "type": "date",
+        "format": "strict_date_optional_time"
+      },
+      "forecast_horizon_hours": {
+        "type": "integer"
+      },
+      "total_score": {
+        "type": "float"
+      },
+      "load_score": {
+        "type": "float"
+      },
+      "write_queue_forecast": {
+        "type": "float"
+      },
+      "disk_used_pct_forecast": {
+        "type": "float"
+      },
+      "jvm_heap_pct_forecast": {
+        "type": "float"
+      },
+      "shard_score": {
+        "type": "float"
+      },
+      "alert": {
+        "type": "boolean"
+      }
+    }
+  }
+}

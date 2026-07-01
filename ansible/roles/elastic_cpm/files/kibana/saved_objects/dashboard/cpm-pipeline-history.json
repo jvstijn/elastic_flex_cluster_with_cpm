@@ -1,0 +1,41 @@
+{
+  "attributes": {
+    "title": "CPM \u2014 Pipeline assignment history",
+    "description": "CPM \u2014 Pipeline assignment history",
+    "panelsJSON": "[{\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 0, \"w\": 48, \"h\": 6, \"i\": \"3ecf60e3-fe99-55bc-8d5d-be5696b2dad0\"}, \"panelIndex\": \"3ecf60e3-fe99-55bc-8d5d-be5696b2dad0\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_0\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 6, \"w\": 48, \"h\": 4, \"i\": \"de5bf874-ae87-5501-a517-0129095a71ee\"}, \"panelIndex\": \"de5bf874-ae87-5501-a517-0129095a71ee\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_1\"}, {\"version\": \"8.19.0\", \"type\": \"search\", \"gridData\": {\"x\": 0, \"y\": 10, \"w\": 48, \"h\": 14, \"i\": \"147a57af-37f2-598e-855e-b4bbd8120bd5\"}, \"panelIndex\": \"147a57af-37f2-598e-855e-b4bbd8120bd5\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_2\"}, {\"version\": \"8.19.0\", \"type\": \"search\", \"gridData\": {\"x\": 0, \"y\": 24, \"w\": 48, \"h\": 18, \"i\": \"891a47eb-dab0-5774-bcc4-2cf1c1f6e202\"}, \"panelIndex\": \"891a47eb-dab0-5774-bcc4-2cf1c1f6e202\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_3\"}]",
+    "optionsJSON": "{\"useMargins\": true, \"syncColors\": false, \"syncCursor\": true, \"syncTooltips\": false, \"hidePanelTitles\": false}",
+    "version": 1,
+    "timeRestore": true,
+    "timeTo": "now",
+    "timeFrom": "now-7d",
+    "refreshInterval": {
+      "pause": true,
+      "value": 0
+    },
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"language\": \"kuery\", \"query\": \"\"}, \"filter\": []}"
+    }
+  },
+  "references": [
+    {
+      "name": "panel_0",
+      "type": "visualization",
+      "id": "cpm-vis-nav-history"
+    },
+    {
+      "name": "panel_1",
+      "type": "visualization",
+      "id": "cpm-vis-pipeline-history-intro"
+    },
+    {
+      "name": "panel_2",
+      "type": "search",
+      "id": "cpm-search-pipeline-moves-7d"
+    },
+    {
+      "name": "panel_3",
+      "type": "search",
+      "id": "cpm-search-pipeline-history-7d"
+    }
+  ]
+}

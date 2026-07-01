@@ -12,7 +12,7 @@ steps:
       method: POST
       path: /cpmw-pipeline-state/_search
       body:
-        size: 500
+        size: 1000
 
   - name: registry
     type: elasticsearch.request

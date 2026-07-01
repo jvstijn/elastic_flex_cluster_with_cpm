@@ -1,0 +1,67 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "config_type": {
+        "type": "keyword"
+      },
+      "cluster_id": {
+        "type": "keyword"
+      },
+      "dataset": {
+        "type": "keyword"
+      },
+      "data_stream_type": {
+        "type": "keyword"
+      },
+      "namespace": {
+        "type": "keyword"
+      },
+      "pipeline_type": {
+        "type": "keyword"
+      },
+      "locked": {
+        "type": "boolean"
+      },
+      "previous_cluster_id": {
+        "type": "keyword"
+      },
+      "reason": {
+        "type": "keyword"
+      },
+      "weights": {
+        "properties": {
+          "disk": {
+            "type": "float"
+          },
+          "jvm": {
+            "type": "float"
+          },
+          "shard": {
+            "type": "float"
+          },
+          "load": {
+            "type": "float"
+          }
+        }
+      },
+      "alert_threshold": {
+        "type": "float"
+      },
+      "forecast_horizon_hours": {
+        "type": "integer"
+      },
+      "updated_at": {
+        "type": "date",
+        "format": "strict_date_optional_time"
+      },
+      "updated_by": {
+        "type": "keyword"
+      }
+    }
+  }
+}

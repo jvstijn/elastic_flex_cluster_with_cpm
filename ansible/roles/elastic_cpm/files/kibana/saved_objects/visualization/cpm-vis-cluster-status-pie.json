@@ -1,0 +1,18 @@
+{
+  "attributes": {
+    "title": "Cluster status (active vs inactive)",
+    "visState": "{\"title\": \"Cluster status (active vs inactive)\", \"type\": \"pie\", \"aggs\": [{\"id\": \"1\", \"enabled\": true, \"type\": \"count\", \"schema\": \"metric\", \"params\": {}}, {\"id\": \"2\", \"enabled\": true, \"type\": \"terms\", \"schema\": \"segment\", \"params\": {\"field\": \"active\", \"size\": 10, \"order\": \"desc\", \"orderBy\": \"1\", \"otherBucket\": false, \"missingBucket\": false}}], \"params\": {\"type\": \"pie\", \"addTooltip\": true, \"addLegend\": true, \"legendPosition\": \"right\", \"isDonut\": true, \"labels\": {\"show\": true, \"values\": true, \"last_level\": true, \"truncate\": 80}, \"palette\": {\"type\": \"palette\", \"name\": \"status\"}}}",
+    "uiStateJSON": "{\"vis\": {\"colors\": {\"true\": \"#54B399\", \"false\": \"#E7664C\"}}}",
+    "description": "",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-cluster-registry"
+    }
+  ]
+}

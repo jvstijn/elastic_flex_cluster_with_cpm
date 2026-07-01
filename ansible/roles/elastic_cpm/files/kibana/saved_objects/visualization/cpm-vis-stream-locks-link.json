@@ -1,0 +1,11 @@
+{
+  "attributes": {
+    "title": "Stream locks",
+    "visState": "{\"title\": \"Stream locks\", \"type\": \"markdown\", \"aggs\": [], \"params\": {\"fontSize\": 14, \"openLinksInNewTab\": true, \"markdown\": \"**[Open stream locks dashboard \\u2192](/app/dashboards#/view/cpm-stream-locks)**\\n\\nShows lock count, configuration guide, and the active locks table.\\n\"}}",
+    "uiStateJSON": "{}",
+    "description": "",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"\", \"language\": \"kuery\"}, \"filter\": []}"
+    }
+  }
+}

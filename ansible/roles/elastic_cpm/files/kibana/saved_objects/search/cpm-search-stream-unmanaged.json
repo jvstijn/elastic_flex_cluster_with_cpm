@@ -1,0 +1,30 @@
+{
+  "attributes": {
+    "title": "Unmanaged streams per cluster",
+    "description": "",
+    "columns": [
+      "cluster_name",
+      "index_name",
+      "stream_key",
+      "topic",
+      "management_status",
+      "recorded_at"
+    ],
+    "sort": [
+      [
+        "cluster_name",
+        "asc"
+      ]
+    ],
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"cpm_managed : false\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-stream-coverage"
+    }
+  ]
+}

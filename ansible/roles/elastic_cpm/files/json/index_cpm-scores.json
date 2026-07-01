@@ -1,35 +1,94 @@
 {
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
   "mappings": {
     "dynamic": "strict",
     "properties": {
-      "scored_at":              { "type": "date", "format": "strict_date_optional_time" },
-      "forecast_horizon_hours": { "type": "integer" },
-      "alert_threshold":        { "type": "float" },
-      "weights_applied": {
-        "properties": {
-          "disk":  { "type": "float" },
-          "jvm":   { "type": "float" },
-          "shard": { "type": "float" },
-          "load":  { "type": "float" }
-        }
-      },
       "clusters": {
         "type": "nested",
         "dynamic": "strict",
         "properties": {
-          "alert":                   { "type": "boolean" },
-          "cluster_id":              { "type": "keyword" },
-          "cluster_uuid":            { "type": "keyword" },
-          "disk_score":              { "type": "float" },
-          "disk_used_pct_current":   { "type": "float" },
-          "disk_used_pct_forecast":  { "type": "float" },
-          "jvm_heap_pct_forecast":   { "type": "float" },
-          "jvm_score":               { "type": "float" },
-          "load_score":              { "type": "float" },
-          "shard_count_forecast":    { "type": "long" },
-          "shard_score":             { "type": "float" },
-          "total_score":             { "type": "float" },
-          "write_queue_forecast":    { "type": "float" }
+          "alert": {
+            "type": "boolean"
+          },
+          "cluster_id": {
+            "type": "keyword"
+          },
+          "cluster_uuid": {
+            "type": "keyword"
+          },
+          "disk_score": {
+            "type": "float"
+          },
+          "disk_used_pct_current": {
+            "type": "float"
+          },
+          "disk_used_pct_forecast": {
+            "type": "float"
+          },
+          "jvm_heap_pct_forecast": {
+            "type": "float"
+          },
+          "jvm_score": {
+            "type": "float"
+          },
+          "load_score": {
+            "type": "float"
+          },
+          "shard_count_forecast": {
+            "type": "long"
+          },
+          "shard_score": {
+            "type": "float"
+          },
+          "total_score": {
+            "type": "float"
+          },
+          "write_queue_forecast": {
+            "type": "float"
+          },
+          "cluster_name": {
+            "type": "keyword"
+          },
+          "scored_at": {
+            "type": "date",
+            "format": "strict_date_optional_time"
+          },
+          "recorded_at": {
+            "type": "date",
+            "format": "strict_date_optional_time"
+          },
+          "forecast_horizon_hours": {
+            "type": "integer"
+          }
+        }
+      },
+      "forecast_horizon_hours": {
+        "type": "integer"
+      },
+      "scored_at": {
+        "type": "date",
+        "format": "strict_date_optional_time"
+      },
+      "alert_threshold": {
+        "type": "float"
+      },
+      "weights_applied": {
+        "properties": {
+          "disk": {
+            "type": "float"
+          },
+          "jvm": {
+            "type": "float"
+          },
+          "shard": {
+            "type": "float"
+          },
+          "load": {
+            "type": "float"
+          }
         }
       }
     }
