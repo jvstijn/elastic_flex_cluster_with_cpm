@@ -25,17 +25,29 @@ import sys
 import urllib.error
 import urllib.request
 
-CLUSTER_NAME = "central-cluster"
-CLUSTER_ID = "CDs5L0stRsiSlgV2EPWjmg"  # active in cpm-cluster-registry
 MON_DS = ".monitoring-es-8-mb"
 
-# The four datasets that get a large docs.count (80000-100000).
-BIG_DATASETS = [
-    "metrics-endpoint.metadata_current_default",
-    "logs-system.auth-default",
-    "logs-winlog.winlog-default",
-    "logs-endpoint.events.process-default",
+# Synthetic marker in the backing-index name (year 2000 / gen 000001) so this
+# generator can safely delete_by_query its own previous docs and never touch
+# real monitoring data. The date/gen are cosmetic for the coverage script.
+MARKER_SUFFIX = "2000.01.01-000001"
+
+# The three active clusters in cpm-cluster-registry (name -> cluster uuid).
+CLUSTERS = [
+    ("central-cluster", "CDs5L0stRsiSlgV2EPWjmg"),
+    ("remote-a", "qwnBfYSwQ02Usrr8p9G-ZQ"),
+    ("remote-b", "16AcRGCJSNmTqKkIHxYGvQ"),
 ]
+CLUSTER_BY_NAME = {name: uuid for name, uuid in CLUSTERS}
+
+# The four datasets that get a large docs.count (80000-100000), placed
+# deliberately: one on central, one on remote-a, two on remote-b.
+BIG_ASSIGN = {
+    "logs-system.auth-default": "central-cluster",
+    "metrics-endpoint.metadata_current_default": "remote-a",
+    "logs-winlog.winlog-default": "remote-b",
+    "logs-endpoint.events.process-default": "remote-b",
+}
 
 DATASETS = """
 metrics-endpoint.metadata_current_default
@@ -389,24 +401,33 @@ def main() -> int:
             seen.add(name)
             datasets.append(name)
 
+    # idempotent self-cleanup: drop this generator's previous synthetic docs
+    dbq = {"query": {"wildcard": {"elasticsearch.index.name": f".ds-*-{MARKER_SUFFIX}"}}}
+    d = call("POST", f"/{MON_DS}*/_delete_by_query?refresh=true&conflicts=proceed", dbq)
+    print(f"cleaned previous synthetic docs: {d.get('deleted', 0)}")
+
     now = datetime.datetime.now(datetime.timezone.utc)
-    big = set(BIG_DATASETS)
     big_counts = {}
+    dist = {name: 0 for name, _ in CLUSTERS}
 
     lines = []
     for i, ds in enumerate(datasets):
         ts = now - datetime.timedelta(seconds=300 + (i % 1800))  # 5-35 min ago, < 24h
-        if ds in big:
+        if ds in BIG_ASSIGN:
+            cname = BIG_ASSIGN[ds]
             count = rnd.randint(80000, 100000)
-            big_counts[ds] = count
+            big_counts[ds] = (cname, count)
         else:
+            cname = CLUSTERS[i % len(CLUSTERS)][0]  # round-robin
             count = rnd.randint(50, 2000)
-        idx_name = f".ds-{ds}-2026.06.30-000001"
+        cid = CLUSTER_BY_NAME[cname]
+        dist[cname] += 1
+        idx_name = f".ds-{ds}-{MARKER_SUFFIX}"
         doc = {
             "@timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "event": {"dataset": "elasticsearch.index"},
             "elasticsearch": {
-                "cluster": {"id": CLUSTER_ID, "name": CLUSTER_NAME},
+                "cluster": {"id": cid, "name": cname},
                 "index": {"name": idx_name, "total": {"docs": {"count": count}}},
             },
         }
@@ -425,9 +446,12 @@ def main() -> int:
                 print("  ERROR:", json.dumps(err)[:300])
                 break
         return 1
+    print("distribution over active clusters:")
+    for name, _ in CLUSTERS:
+        print(f"  {name:16} {dist[name]} datasets")
     print(f"big datasets ({len(big_counts)}):")
-    for ds, c in big_counts.items():
-        print(f"  {ds}: {c}")
+    for ds, (cname, c) in big_counts.items():
+        print(f"  {ds}: {c} docs on {cname}")
     return 0
 
 
