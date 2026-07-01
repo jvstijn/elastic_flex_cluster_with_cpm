@@ -1,0 +1,42 @@
+---
+- name: Load cluster registry documents
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-cluster-registry/_search"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body:
+      size: 100
+      query:
+        match_all: {}
+    status_code: [200]
+  register: cpm_registry_search
+  when: cpm_cluster_registry | length > 0
+  tags: [registry]
+
+- name: Patch cluster registry with ingest_hosts and dc
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-cluster-registry/_doc/{{ item._id }}?refresh=wait_for"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body: "{{ item._source | combine(cpm_registry_patch) }}"
+    status_code: [200, 201]
+  vars:
+    cpm_registry_patch: >-
+      {{ cpm_cluster_registry[item._source.cluster_name | default('')]
+         | default(cpm_cluster_registry[item._source.cluster_id | default('')], true)
+         | default({}, true) }}
+  loop: "{{ cpm_registry_search.json.hits.hits }}"
+  when:
+    - cpm_cluster_registry | length > 0
+    - cpm_registry_patch | length > 0
+  loop_control:
+    label: "{{ item._source.cluster_name | default(item._id) }}"
+  tags: [registry]

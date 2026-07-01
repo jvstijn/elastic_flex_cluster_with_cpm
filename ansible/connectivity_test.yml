@@ -1,0 +1,147 @@
+---
+# Pre-flight connectivity for CPM Ansible (Elasticsearch + Kibana APIs)
+- name: CPM connectivity test
+  hosts: cpm
+  gather_facts: false
+  tasks:
+    - name: Load credentials from env file
+      ansible.builtin.assert:
+        that:
+          - elastic_pw | length > 0
+          - kibana_password | length > 0
+        fail_msg: >-
+          Set ELASTIC_PASSWORD and KIBANA_PASSWORD in {{ cpm_env_file }}
+          (copy from docker/reference/.env on imr-dod-vm).
+
+    - name: Elasticsearch cluster health
+      ansible.builtin.uri:
+        url: "{{ elastic_base_url }}/_cluster/health"
+        method: GET
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        status_code: [200]
+      register: es_health
+
+    - name: Elasticsearch trial license
+      ansible.builtin.uri:
+        url: "{{ elastic_base_url }}/_license"
+        method: GET
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        status_code: [200]
+      register: es_license
+
+    - name: Resolve monitoring search URL
+      ansible.builtin.set_fact:
+        cpm_monitoring_search_url: "{{ elastic_base_url }}/{{ cpm_monitoring_index }}/_search"
+
+    - name: Stack Monitoring index probe
+      ansible.builtin.uri:
+        url: "{{ cpm_monitoring_search_url }}"
+        method: POST
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        body_format: json
+        body:
+          size: 0
+          query:
+            range:
+              "@timestamp":
+                gte: now-1d
+        status_code: [200]
+      register: es_monitoring
+
+    - name: Elasticsearch Watcher API
+      ansible.builtin.uri:
+        url: "{{ elastic_base_url }}/_watcher/stats"
+        method: GET
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        status_code: [200]
+      register: es_watcher
+
+    - name: Elasticsearch ML info
+      ansible.builtin.uri:
+        url: "{{ elastic_base_url }}/_ml/info"
+        method: GET
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        status_code: [200]
+      register: es_ml
+
+    - name: Elasticsearch transform API
+      ansible.builtin.uri:
+        url: "{{ elastic_base_url }}/_transform"
+        method: GET
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        status_code: [200]
+      register: es_transform
+
+    - name: Kibana status (unauthenticated)
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/status"
+        method: GET
+        validate_certs: "{{ cpm_validate_certs }}"
+        status_code: [200]
+      register: kibana_status
+
+    - name: Kibana spaces API (elastic user)
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/spaces/space"
+        method: GET
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        status_code: [200]
+      register: kibana_spaces
+
+    - name: Kibana saved objects API (elastic user)
+      ansible.builtin.uri:
+        url: "{{ kibana_base_url }}/api/saved_objects/_find?type=index-pattern&per_page=1"
+        method: GET
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        status_code: [200]
+      register: kibana_saved_objects
+
+    - name: Sample remote cluster API (cluster05)
+      ansible.builtin.uri:
+        url: "https://cluster05.kaposi.net/_cluster/health"
+        method: GET
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        status_code: [200]
+      register: remote_health
+      when: cpm_cluster_registry.cluster05 is defined
+
+    - name: Connectivity summary
+      ansible.builtin.debug:
+        msg:
+          - "ES {{ elastic_base_url }}: {{ es_health.json.cluster_name }} status={{ es_health.json.status }} nodes={{ es_health.json.number_of_nodes }}"
+          - "ES license: {{ es_license.json.license.type }}"
+          - "Monitoring docs (24h): {{ es_monitoring.json.hits.total.value | default(es_monitoring.json.hits.total) }}"
+          - "Watcher: OK ({{ es_watcher.json._nodes.total }} nodes)"
+          - "ML: OK"
+          - "Transform API: OK"
+          - "Kibana {{ kibana_base_url }}: {{ kibana_status.json.status.overall.level }}"
+          - "Kibana spaces API: OK ({{ kibana_spaces.json | length }} spaces)"
+          - "Kibana saved objects API: OK"
+          - "Remote cluster05: {{ remote_health.json.status | default('skipped') }}"

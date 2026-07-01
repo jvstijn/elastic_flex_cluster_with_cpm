@@ -1,0 +1,11 @@
+{
+  "config_type": "scoring_weights",
+  "weights": {
+    "disk": 0.5,
+    "jvm": 0.25,
+    "shard": 0.05,
+    "load": 0.2
+  },
+  "alert_threshold": 80,
+  "forecast_horizon_hours": 24
+}

@@ -1,0 +1,11 @@
+{
+  "attributes": {
+    "title": "Watcher chain",
+    "visState": "{\"title\": \"Watcher chain\", \"type\": \"markdown\", \"aggs\": [], \"params\": {\"fontSize\": 14, \"openLinksInNewTab\": true, \"markdown\": \"### Watcher chain\\n\\nRun in order after config or ingest changes (skip step 0 when registry unchanged):\\n\\n0. **cpm-registry-sync** \\u2014 sync cluster capacity into `cpm-cluster-registry`\\n1. **cpm-scoring** \\u2014 score clusters; writes `cpm-scores` and `cpm-cluster-scores`\\n2. **cpm-routing-advisor** \\u2014 suggest moves or dedicated pipelines\\n3. **cpm-state-manager** \\u2014 apply locks/suggestions; write `cpm-pipeline-state`\\n4. **cpm-pipeline-manager** \\u2014 push Logstash pipelines\\n\\n**Watcher status panels** sync from Elasticsearch `.watcher-history-*` via transform `cpm-watcher-status-sync` (~1 min after each run). Scheduled runs are logged automatically; manual runs need `record_execution`.\\n\\nManual execute (writes to history + updates dashboard):\\n\\n    POST _watcher/watch/cpm-scoring/_execute\\n    { \\\"record_execution\\\": true }\\n\\nChain (in order):\\n\\n    cpm-registry-sync \\u2192 cpm-scoring \\u2192 cpm-routing-advisor \\u2192 cpm-state-manager \\u2192 cpm-pipeline-manager\\n\"}}",
+    "uiStateJSON": "{}",
+    "description": "",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"\", \"language\": \"kuery\"}, \"filter\": []}"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "attributes": {
+    "title": "About",
+    "visState": "{\"title\": \"About\", \"type\": \"markdown\", \"aggs\": [], \"params\": {\"fontSize\": 14, \"openLinksInNewTab\": true, \"markdown\": \"Current routing state from **`cpm-state-manager`** (`cpm-pipeline-state`). Refresh by running the watcher chain (see Platform overview).\\n\"}}",
+    "uiStateJSON": "{}",
+    "description": "",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"\", \"language\": \"kuery\"}, \"filter\": []}"
+    }
+  }
+}

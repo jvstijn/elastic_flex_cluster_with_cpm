@@ -1,0 +1,18 @@
+{
+  "attributes": {
+    "title": "Inactive clusters",
+    "visState": "{\"title\": \"Inactive clusters\", \"type\": \"metric\", \"aggs\": [{\"id\": \"1\", \"enabled\": true, \"type\": \"count\", \"schema\": \"metric\", \"params\": {}}], \"params\": {\"addTooltip\": true, \"addLegend\": false, \"type\": \"metric\", \"metric\": {\"percentageMode\": false, \"useRanges\": false, \"colorSchema\": \"Green to Red\", \"metricColorMode\": \"None\", \"colorsRange\": [{\"from\": 0, \"to\": 10000}], \"labels\": {\"show\": true}, \"invertColors\": false, \"style\": {\"bgFill\": \"#FCE8E6\", \"bgColor\": false, \"labelColor\": false, \"subText\": \"\", \"fontSize\": 60}}}}",
+    "uiStateJSON": "{}",
+    "description": "",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"active : false\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-cluster-registry"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "cpm-dv-cluster-registry",
+    "title": "cpm-cluster-registry",
+    "time_field": null
+  },
+  {
+    "id": "cpm-dv-pipeline-state",
+    "title": "cpm-pipeline-state",
+    "time_field": null
+  },
+  {
+    "id": "cpm-dv-pipeline-history",
+    "title": "cpm-pipeline-history",
+    "time_field": "recorded_at"
+  },
+  {
+    "id": "cpm-dv-routing-config",
+    "title": "cpm-routing-config",
+    "time_field": null
+  },
+  {
+    "id": "cpm-dv-routing-suggestions",
+    "title": "cpm-routing-suggestions",
+    "time_field": "suggested_at"
+  },
+  {
+    "id": "cpm-dv-watcher-executions",
+    "title": "cpm-watcher-executions",
+    "time_field": "recorded_at"
+  },
+  {
+    "id": "cpm-dv-stream-coverage",
+    "title": "cpm-stream-coverage",
+    "time_field": "recorded_at"
+  },
+  {
+    "id": "cpm-dv-cluster-scores",
+    "title": "cpm-cluster-scores",
+    "time_field": null
+  }
+]

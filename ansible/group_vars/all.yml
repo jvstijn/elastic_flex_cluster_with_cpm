@@ -1,26 +1,3 @@
 ---
-# ===========================================================================
-# Variabelen voor de role 'elastic_cpm'.
-# De waarden worden zoveel mogelijk rechtstreeks uit de project-.env gelezen
-# (../.env t.o.v. dit playbook), zodat er één bron van waarheid is.
-# ===========================================================================
-
-# --- Verbinding met de centrale Elasticsearch ------------------------------
-# Ansible draait op de docker-host. De central ES-node is daar bereikbaar op
-# de poort die docker-compose publiceert (.env -> ES_CENTRAL_PORT).
-elastic_usr: elastic
-
-# Wachtwoord van de 'elastic' user, gelezen uit .env (ELASTIC_PASSWORD).
-elastic_pw: "{{ lookup('ini', 'ELASTIC_PASSWORD type=properties file=' ~ playbook_dir ~ '/../.env') }}"
-
-# Gepubliceerde host-poort van de central ES (.env -> ES_CENTRAL_PORT).
-es_central_port: "{{ lookup('ini', 'ES_CENTRAL_PORT type=properties file=' ~ playbook_dir ~ '/../.env') }}"
-
-# Basis-URL die de role gebruikt voor alle API-calls. SSL met self-signed
-# certificaten -> de role draait met validate_certs: false.
-elastic_base_url: "https://localhost:{{ es_central_port }}"
-
-# --- Watcher webhook -------------------------------------------------------
-# De watchers draaien IN de es-central container en roepen Elasticsearch
-# intern aan via de docker-netwerk alias 'es-central' op poort 9200.
-webhook_host: es-central
+# Shared defaults — override per inventory in inventories/*/group_vars/all.yml
+cpm_validate_certs: false

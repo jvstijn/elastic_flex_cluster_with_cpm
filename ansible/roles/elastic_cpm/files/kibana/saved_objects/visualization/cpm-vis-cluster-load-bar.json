@@ -1,0 +1,18 @@
+{
+  "attributes": {
+    "title": "Load score by cluster",
+    "visState": "{\"title\": \"Load score by cluster\", \"type\": \"histogram\", \"aggs\": [{\"id\": \"1\", \"enabled\": true, \"type\": \"max\", \"schema\": \"metric\", \"params\": {\"field\": \"load_score\"}}, {\"id\": \"2\", \"enabled\": true, \"type\": \"terms\", \"schema\": \"segment\", \"params\": {\"field\": \"cluster_name\", \"size\": 10, \"order\": \"desc\", \"orderBy\": \"1\", \"otherBucket\": false, \"missingBucket\": false}}], \"params\": {\"type\": \"histogram\", \"grid\": {\"categoryLines\": false, \"style\": {\"color\": \"#eee\"}}, \"categoryAxes\": [{\"id\": \"CategoryAxis-1\", \"type\": \"category\", \"position\": \"left\", \"show\": true, \"labels\": {\"show\": true, \"truncate\": 80}}], \"valueAxes\": [{\"id\": \"ValueAxis-1\", \"type\": \"value\", \"position\": \"bottom\", \"show\": true}], \"seriesParams\": [{\"show\": true, \"type\": \"histogram\", \"mode\": \"normal\", \"data\": {\"label\": \"Load score\", \"id\": \"1\"}, \"valueAxis\": \"ValueAxis-1\", \"drawLinesBetweenPoints\": false, \"showCircles\": true}], \"addTooltip\": true, \"addLegend\": false, \"labels\": {\"show\": true}, \"orientation\": \"horizontal\"}}",
+    "uiStateJSON": "{}",
+    "description": "",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-cluster-scores"
+    }
+  ]
+}

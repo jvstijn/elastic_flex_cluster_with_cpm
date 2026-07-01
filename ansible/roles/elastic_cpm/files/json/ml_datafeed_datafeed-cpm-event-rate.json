@@ -1,0 +1,67 @@
+{
+  "query_delay": "67193ms",
+  "chunking_config": {
+    "mode": "manual",
+    "time_span": "900000000ms"
+  },
+  "indices_options": {
+    "ignore_unavailable": false,
+    "expand_wildcards": [
+      "open"
+    ],
+    "allow_no_indices": true,
+    "ignore_throttled": true
+  },
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "match_phrase": {
+            "event.dataset": "elasticsearch.index"
+          }
+        }
+      ]
+    }
+  },
+  "indices": [
+    ".monitoring-es-8-*"
+  ],
+  "aggregations": {
+    "buckets": {
+      "date_histogram": {
+        "field": "@timestamp",
+        "fixed_interval": "15m"
+      },
+      "aggregations": {
+        "@timestamp": {
+          "max": {
+            "field": "@timestamp"
+          }
+        },
+        "index_name": {
+          "terms": {
+            "field": "elasticsearch.index.name",
+            "size": 1000
+          },
+          "aggregations": {
+            "index_total": {
+              "max": {
+                "field": "elasticsearch.index.total.indexing.index_total"
+              }
+            },
+            "doc_count": {
+              "value_count": {
+                "field": "@timestamp"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "scroll_size": 1000,
+  "delayed_data_check_config": {
+    "enabled": true
+  },
+  "job_id": "cpm-event-rate"
+}

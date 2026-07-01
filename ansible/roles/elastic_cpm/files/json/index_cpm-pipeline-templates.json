@@ -1,0 +1,33 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "name": {
+        "type": "keyword"
+      },
+      "template": {
+        "type": "text"
+      },
+      "description": {
+        "type": "keyword"
+      },
+      "default_cluster_id": {
+        "type": "keyword"
+      },
+      "kafka_bootstrap": {
+        "type": "keyword"
+      },
+      "consumer_threads": {
+        "type": "integer"
+      },
+      "pipeline_settings": {
+        "type": "object",
+        "dynamic": true
+      }
+    }
+  }
+}

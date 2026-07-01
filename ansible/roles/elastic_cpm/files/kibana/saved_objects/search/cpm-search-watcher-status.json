@@ -1,0 +1,31 @@
+{
+  "attributes": {
+    "title": "Watcher execution status (latest)",
+    "description": "",
+    "columns": [
+      "watch_id",
+      "executed_at",
+      "execution_state",
+      "successful",
+      "failed_actions",
+      "source",
+      "recorded_at"
+    ],
+    "sort": [
+      [
+        "watch_id",
+        "asc"
+      ]
+    ],
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"source : watcher-history\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-watcher-executions"
+    }
+  ]
+}

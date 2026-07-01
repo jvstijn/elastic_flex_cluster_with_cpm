@@ -43,7 +43,7 @@ extract_watches_specs:
     style: inline
     alt_watch_ids: []
   - watch_id: cpm-registry-sync
-    template: watcher_cpm-register-sync.json.j2
+    template: watcher_cpm-registry-sync.json.j2
     style: inline
     alt_watch_ids:
       - cpm-register-sync

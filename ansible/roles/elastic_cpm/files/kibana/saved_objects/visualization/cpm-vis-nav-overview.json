@@ -1,0 +1,11 @@
+{
+  "attributes": {
+    "title": "Navigation",
+    "visState": "{\"title\": \"Navigation\", \"type\": \"markdown\", \"aggs\": [], \"params\": {\"fontSize\": 14, \"openLinksInNewTab\": true, \"markdown\": \"## CPM dashboards\\n\\n- **CPM \\u2014 Platform overview** (this page)\\n- [CPM \\u2014 Current pipeline assignments](/app/dashboards#/view/cpm-pipeline-assignments)\\n- [CPM \\u2014 Pipeline assignment history](/app/dashboards#/view/cpm-pipeline-history)\\n- [CPM \\u2014 Stream locks](/app/dashboards#/view/cpm-stream-locks)\\n\"}}",
+    "uiStateJSON": "{}",
+    "description": "",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"\", \"language\": \"kuery\"}, \"filter\": []}"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "attributes": {
+    "title": "Routing suggestions",
+    "description": "",
+    "columns": [
+      "suggested_at",
+      "data_stream_type",
+      "dataset",
+      "namespace",
+      "source_cluster_id",
+      "suggested_cluster_id",
+      "source_score",
+      "target_score",
+      "event_rate_1h",
+      "reason"
+    ],
+    "sort": [
+      [
+        "suggested_at",
+        "desc"
+      ]
+    ],
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-routing-suggestions"
+    }
+  ]
+}

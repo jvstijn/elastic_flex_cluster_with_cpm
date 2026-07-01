@@ -1,0 +1,22 @@
+---
+# imr-dod-vm reference stack — public TLS front door (nginx :443)
+cpm_env_file: "{{ lookup('env', 'CPM_ENV_FILE') | default(playbook_dir + '/.env', true) }}"
+
+elastic_usr: elastic
+elastic_pw: "{{ lookup('ini', 'ELASTIC_PASSWORD type=properties file=' ~ cpm_env_file) }}"
+kibana_password: "{{ lookup('ini', 'KIBANA_PASSWORD type=properties file=' ~ cpm_env_file) }}"
+
+elastic_base_url: "https://central.kaposi.net"
+kibana_base_url: "https://cpm.kaposi.net"
+cpm_validate_certs: true
+
+# Watchers run on es-central-01; webhook callbacks use docker DNS + port 9200
+webhook_host: es-central-01
+webhook_port: 9200
+
+cpm_monitoring_index: ".monitoring-es-8-*"
+cpm_ml_reinstall: false
+cpm_clean_indices: false
+cpm_datafeed_start: ""
+
+cpm_cluster_registry: "{{ lookup('file', playbook_dir + '/inventories/kaposi/files/cluster_registry.json') | from_json }}"

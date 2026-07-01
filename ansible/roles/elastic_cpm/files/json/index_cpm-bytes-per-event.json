@@ -1,0 +1,35 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "bytes_per_event": {
+        "type": "double"
+      },
+      "computed_at": {
+        "type": "date",
+        "format": "strict_date_optional_time"
+      },
+      "sample_end": {
+        "type": "date",
+        "format": "strict_date_optional_time"
+      },
+      "sample_start": {
+        "type": "date",
+        "format": "strict_date_optional_time"
+      },
+      "total_disk_delta_bytes": {
+        "type": "long"
+      },
+      "total_events": {
+        "type": "long"
+      },
+      "window_days": {
+        "type": "integer"
+      }
+    }
+  }
+}

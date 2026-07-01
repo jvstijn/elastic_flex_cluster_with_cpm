@@ -1,0 +1,58 @@
+---
+- name: Ensure pipeline template mapping includes consumer_threads
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-pipeline-templates/_mapping"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body:
+      properties:
+        consumer_threads:
+          type: integer
+    status_code: [200, 201, 400]
+  tags: [seed]
+
+- name: Seed CPM pipeline templates
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-pipeline-templates/_doc/{{ item.id }}"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body: "{{ lookup('file', role_path + '/files/' + item.file) }}"
+    status_code: [200, 201]
+  loop: "{{ cpm_pipeline_templates }}"
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [seed]
+
+- name: Check if global routing config exists
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-routing-config/_doc/_global"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    status_code: [200, 404]
+  register: cpm_routing_global_check
+  tags: [seed]
+
+- name: Seed global routing scoring weights
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-routing-config/_doc/_global"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body: "{{ lookup('file', role_path + '/files/json/routing_config_global.json') }}"
+    status_code: [200, 201]
+  when: cpm_routing_global_check.status == 404
+  tags: [seed]

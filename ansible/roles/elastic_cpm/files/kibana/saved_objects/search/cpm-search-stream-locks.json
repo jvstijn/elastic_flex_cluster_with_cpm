@@ -1,0 +1,32 @@
+{
+  "attributes": {
+    "title": "Active stream locks",
+    "description": "",
+    "columns": [
+      "config_type",
+      "data_stream_type",
+      "dataset",
+      "namespace",
+      "cluster_id",
+      "pipeline_type",
+      "locked",
+      "reason"
+    ],
+    "sort": [
+      [
+        "dataset",
+        "asc"
+      ]
+    ],
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"config_type : stream_lock\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-routing-config"
+    }
+  ]
+}

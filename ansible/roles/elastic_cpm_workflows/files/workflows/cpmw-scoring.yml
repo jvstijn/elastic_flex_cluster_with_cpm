@@ -106,6 +106,7 @@ steps:
       fields:
         cluster_id: "{{ item._source.cluster_id }}"
         cluster_uuid: "{{ item._source.cluster_uuid }}"
+        cluster_name: "{{ item._source.cluster_name | default: item._source.cluster_id }}"
         disk_used_pct_forecast: >-
           {%- assign b = steps.disk_forecast.output.aggregations.by_cluster.buckets | where: 'key', item._source.cluster_uuid | first -%}
           {%- assign v = 0 -%}{%- if b and b.peak.value -%}{%- assign v = b.peak.value -%}{%- endif -%}
@@ -136,6 +137,7 @@ steps:
       fields:
         cluster_id: "{{ item.cluster_id }}"
         cluster_uuid: "{{ item.cluster_uuid }}"
+        cluster_name: "{{ item.cluster_name }}"
         disk_used_pct_forecast: "{{ item.disk_used_pct_forecast }}"
         jvm_heap_pct_forecast: "{{ item.jvm_heap_pct_forecast }}"
         shard_score: "{{ item.shard_score }}"
@@ -153,6 +155,9 @@ steps:
           {%- assign t = item.shard_score | times: 0.05 | plus: t -%}
           {%- assign t = item.load_score | times: 0.20 | plus: t -%}
           {%- if t > 80.0 -%}true{%- else -%}false{%- endif -%}
+        scored_at: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
+        recorded_at: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
+        forecast_horizon_hours: 24
 
   # --- Write: one scores document ------------------------------------------
   - name: write_scores
@@ -170,3 +175,25 @@ steps:
           shard: 0.05
           load: 0.2
         clusters: "${{ steps.build_final.output }}"
+
+  # --- Write: per-cluster dashboard scores ---------------------------------
+  - name: write_cluster_scores
+    type: elasticsearch.request
+    foreach: "${{ steps.build_final.output }}"
+    with:
+      method: PUT
+      path: "/cpm-cluster-scores/_doc/latest-${{ foreach.item.cluster_id }}"
+      body:
+        cluster_id: "${{ foreach.item.cluster_id }}"
+        cluster_uuid: "${{ foreach.item.cluster_uuid }}"
+        cluster_name: "${{ foreach.item.cluster_name }}"
+        scored_at: "${{ foreach.item.scored_at }}"
+        recorded_at: "${{ foreach.item.recorded_at }}"
+        forecast_horizon_hours: "${{ foreach.item.forecast_horizon_hours }}"
+        total_score: "${{ foreach.item.total_score }}"
+        load_score: "${{ foreach.item.load_score }}"
+        write_queue_forecast: "${{ foreach.item.write_queue_forecast }}"
+        disk_used_pct_forecast: "${{ foreach.item.disk_used_pct_forecast }}"
+        jvm_heap_pct_forecast: "${{ foreach.item.jvm_heap_pct_forecast }}"
+        shard_score: "${{ foreach.item.shard_score }}"
+        alert: "${{ foreach.item.alert }}"

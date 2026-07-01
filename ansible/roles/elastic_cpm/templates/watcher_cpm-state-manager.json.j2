@@ -139,7 +139,7 @@
                         "by_index": {
                           "terms": {
                             "field": "elasticsearch.index.name",
-                            "size": 500
+                            "size": 1000
                           },
                           "aggs": {
                             "over_time": {
@@ -175,7 +175,7 @@
                 ],
                 "rest_total_hits_as_int": true,
                 "body": {
-                  "size": 500
+                  "size": 1000
                 }
               }
             }

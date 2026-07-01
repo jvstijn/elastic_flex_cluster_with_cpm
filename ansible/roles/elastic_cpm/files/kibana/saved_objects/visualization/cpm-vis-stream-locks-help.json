@@ -1,0 +1,11 @@
+{
+  "attributes": {
+    "title": "Stream lock guide",
+    "visState": "{\"title\": \"Stream lock guide\", \"type\": \"markdown\", \"aggs\": [], \"params\": {\"fontSize\": 14, \"openLinksInNewTab\": true, \"markdown\": \"### Stream locks (`cpm-routing-config`)\\n\\nPin a data stream to a cluster. Document ID = topic name, e.g. `logs-account-gateway-prd`.\\n\\nRequired fields: `config_type: stream_lock`, `cluster_id`, `locked: true`, `pipeline_type` (`catchall` or `dedicated`), plus `data_stream_type`, `dataset`, `namespace`.\\n\\nAfter create/update/delete, run **cpm-state-manager** then **cpm-pipeline-manager**.\\n\\nExample:\\n\\n    PUT cpm-routing-config/_doc/logs-account-gateway-prd\\n    {\\n      \\\"config_type\\\": \\\"stream_lock\\\",\\n      \\\"data_stream_type\\\": \\\"logs\\\",\\n      \\\"dataset\\\": \\\"account-gateway\\\",\\n      \\\"namespace\\\": \\\"prd\\\",\\n      \\\"cluster_id\\\": \\\"<from CPM clusters table>\\\",\\n      \\\"pipeline_type\\\": \\\"dedicated\\\",\\n      \\\"locked\\\": true,\\n      \\\"reason\\\": \\\"Force hot stream to remote-a\\\"\\n    }\\n\\nRemove a lock: `DELETE cpm-routing-config/_doc/logs-account-gateway-prd` then re-run the watchers.\\n\"}}",
+    "uiStateJSON": "{}",
+    "description": "",
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"\", \"language\": \"kuery\"}, \"filter\": []}"
+    }
+  }
+}
