@@ -62,8 +62,15 @@ pass "Elasticsearch cluster health: ${cluster}"
 lic="$(es_curl "${ES_URL}/_license" | python3 -c "import sys,json; print(json.load(sys.stdin)['license']['type'])")" || fail "license API"
 pass "License: ${lic}"
 
-mon="$(es_curl -X POST "${ES_URL}/${MON_INDEX}/_search" -H 'Content-Type: application/json' -d '{"size":0,"query":{"range":{"@timestamp":{"gte":"now-1d"}}}}' | python3 -c "import sys,json; d=json.load(sys.stdin); t=d.get('hits',{}).get('total',{}); print(t.get('value',t) if isinstance(t,dict) else t)")" || fail "monitoring search"
-pass "Monitoring docs (24h): ${mon}"
+mon="$(es_curl -X POST "${ES_URL}/${MON_INDEX}/_search" -H 'Content-Type: application/json' -d '{"size":0,"query":{"range":{"@timestamp":{"gte":"now-1d"}}}}' | python3 -c "import sys,json; d=json.load(sys.stdin); t=d.get('hits',{}).get('total',{}); print(t.get('value',t) if isinstance(t,dict) else t)")" || fail "monitoring search (.monitoring-es-8-*)"
+if [ "${mon}" = "0" ] || [ -z "${mon}" ]; then
+  legacy="$(es_curl -X POST "${ES_URL}/.monitoring-es-7-*/_count" -H 'Content-Type: application/json' -d '{"query":{"range":{"@timestamp":{"gte":"now-1d"}}}}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('count',0))" 2>/dev/null || echo 0)"
+  if [ "${legacy}" -gt 0 ] 2>/dev/null; then
+    fail "CPM needs Metricbeat es-8 monitoring; found ${legacy} es-7 docs (legacy). On VM: cd docker/reference && ./scripts/enable_stack_monitoring.sh"
+  fi
+  fail "no .monitoring-es-8-* docs in 24h — run docker/reference/scripts/enable_stack_monitoring.sh on imr-dod-vm"
+fi
+pass "Monitoring docs (24h, es-8): ${mon}"
 
 es_curl "${ES_URL}/_watcher/stats" >/dev/null || fail "Watcher API"
 pass "Watcher API"

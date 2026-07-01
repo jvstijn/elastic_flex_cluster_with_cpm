@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./target/types",
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true
+  },
+  "include": ["common/**/*", "public/**/*", "server/**/*", "../../typings/**/*"],
+  "kbn_references": [
+    { "path": "../../tsconfig.base.json" },
+    { "path": "../../src/core/tsconfig.json" },
+    { "path": "../../src/plugins/management/tsconfig.json" },
+    { "path": "../../src/plugins/kibana_react/tsconfig.json" }
+  ]
+}

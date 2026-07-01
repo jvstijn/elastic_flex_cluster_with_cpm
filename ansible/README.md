@@ -27,6 +27,19 @@ Credentials are read from [`docker/reference/.env`](../../../docker/reference/.e
 
 Kibana API tasks (dashboard tag) authenticate as **`elastic`** using `ELASTIC_PASSWORD`. `KIBANA_PASSWORD` is the `kibana_system` password for the Kibana container only.
 
+### Stack monitoring prerequisite (Metricbeat → `.monitoring-es-8-*`)
+
+CPM ML jobs, watchers, and field probes read **Metricbeat** monitoring indices on central — not legacy internal collection (`.monitoring-es-7-*`).
+
+On **imr-dod-vm** (once, or after stack changes):
+
+```bash
+cd ~/DoD/docker/reference
+./scripts/enable_stack_monitoring.sh
+```
+
+Verify locally: `./scripts/connectivity_test.sh` (fails if es-8 monitoring is empty).
+
 `webhook_host` stays **`es-central-01`** (internal docker DNS) — watchers execute on the ES node and call back on port 9200 inside the stack.
 
 ## Workstation setup (run once)
@@ -128,6 +141,24 @@ Writes `roles/elastic_cpm/files/kibana/` (data views, visualizations, searches, 
 Deploy with `ansible-playbook site.yml --tags dashboard` or as part of full `site.yml`.
 
 Main dashboard: `https://cpm.kaposi.net/app/dashboards#/view/cpm-platform-overview` (kaposi inventory).
+
+## Kibana CPM plugin (Stack Management → Ingest)
+
+Source: `../kibana_plugin/` — management UI for registry, scoring weights, stream locks, and watcher execution.
+
+```bash
+# Build plugin zip (first run clones Kibana v8.19.16)
+chmod +x ../scripts/build_kibana_cpm_plugin.sh
+../scripts/build_kibana_cpm_plugin.sh
+
+# Or build custom Kibana image for docker/reference
+cd ../kibana_plugin && docker build -t kibana-cpm:8.19.16 .
+# Set KIBANA_IMAGE=kibana-cpm:8.19.16 in docker/reference/.env
+```
+
+UI path: **Stack Management → Ingest → Cluster Pipeline Manager**
+
+Requires a Kibana user with read/write on `cpm-cluster-registry` and `cpm-routing-config`, plus `manage_watcher` for the Run CPM tab.
 
 ## Required Elasticsearch privileges
 
