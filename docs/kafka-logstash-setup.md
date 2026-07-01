@@ -58,6 +58,35 @@ Open **http://localhost:8080** (of `KAFKA_UI_PORT`). Cluster `dod-kafka` toont d
   per cluster (`["<dc>_*"]`). Ze staan idle met "No configuration found" tot het
   `dc`-prefix is toegepast (stap 3-4).
 
+## Router-Logstash (test-dataset -> juiste topic, anders DLQ)
+
+`logstash-router` is een **standalone** (niet CPM-managed) Logstash die:
+1. leest uit het Kafka-topic **`test-dataset`**;
+2. per event het doel-topic bepaalt als
+   `<data_stream.type>-<data_stream.dataset>-<data_stream.namespace>`;
+3. het event naar dat topic schrijft **als het bestaat**, anders naar het topic
+   **`dead-letter-queue`** (met een `[dlq]`-veld: `intended_topic` + `reason`).
+
+"Bestaat het topic?" wordt bepaald met een `translate`-filter tegen
+`config/logstash-router/valid_topics.yml` — een woordenboek van bestaande
+Kafka-topics dat elke 60s wordt herladen. Regenereren na het toevoegen van
+topics:
+
+```bash
+docker exec dod-elastic-kafka-1 /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server kafka:9092 --list | grep -vE '^__' | sort \
+  | sed -E 's/.*/"&": "yes"/' > config/logstash-router/valid_topics.yml
+```
+
+De topics `test-dataset` en `dead-letter-queue` worden aangemaakt door
+`scripts/create_kafka_topics.py` (die ze altijd meeneemt).
+
+**Geverifieerd** — 6 testevents in `test-dataset`: 4 met bestaand doel-topic
+(`logs-system.auth-default`, `logs-winlog.winlog-prd`,
+`metrics-nginx.stubstatus-default`, `logs-nginx-prod`) kwamen elk correct aan; 2
+onbekende (niet-bestaand dataset + ontbrekende `data_stream`) belandden in
+`dead-letter-queue`.
+
 ## Bekende aandachtspunten / vervolgstappen
 
 1. **Central-management-rechten.** De Logstash-config gebruikt `elastic` voor

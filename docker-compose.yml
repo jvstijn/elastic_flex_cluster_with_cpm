@@ -436,6 +436,29 @@ services:
     networks:
       - dod-elastic
 
+  # Standalone router: reads the test-dataset topic and routes each event to
+  # <data_stream.type>-<dataset>-<namespace>, or to dead-letter-queue when that
+  # target topic does not exist (or the data_stream fields are missing).
+  logstash-router:
+    depends_on:
+      kafka:
+        condition: service_started
+      es-central:
+        condition: service_healthy
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/logstash/config/certs
+      - ./config/logstash-router/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./config/logstash-router/valid_topics.yml:/usr/share/logstash/config/valid_topics.yml:ro
+      - ./config/logstash-router/pipeline:/usr/share/logstash/pipeline:ro
+    env_file: .env
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    mem_limit: ${MEM_LIMIT}
+    networks:
+      - dod-elastic
+
   metricbeat-central:
     depends_on:
       es-central:

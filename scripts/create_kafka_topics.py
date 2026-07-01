@@ -85,7 +85,10 @@ def main() -> int:
         print(f"Could not read /_logstash/pipeline: {e}", file=sys.stderr)
         return 2
 
-    print(f"CPM pipeline topics found: {len(topics)}")
+    # Always ensure the router's input + dead-letter topics exist.
+    topics = sorted(set(topics) | {"test-dataset", "dead-letter-queue"})
+
+    print(f"CPM pipeline topics (incl. test-dataset + dead-letter-queue): {len(topics)}")
     for t in topics:
         print(f"  {t}")
     if not topics:
