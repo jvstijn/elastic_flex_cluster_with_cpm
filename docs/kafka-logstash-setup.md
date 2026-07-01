@@ -98,6 +98,19 @@ dat topic niet bestaat.
 onbekende (niet-bestaand dataset + ontbrekende `data_stream`) belandden in
 `dead-letter-queue`.
 
+## Kafka vullen met volume (load)
+
+`scripts/fill_kafka_events.py` produceert events rechtstreeks in de topics met
+`kafka-producer-perf-test.sh` (parallel), zonder de router te triggeren:
+
+```bash
+python3 scripts/fill_kafka_events.py            # 1.000.000 random verdeeld + 4x 200.000
+python3 scripts/fill_kafka_events.py --dry-run  # toon het plan
+```
+
+Geverifieerd: 1.800.000 events geproduceerd — ~3.400 per topic over 310 topics,
+en 4 gekozen topics elk ~203.000.
+
 ## Bekende aandachtspunten / vervolgstappen
 
 1. **Central-management-rechten.** De Logstash-config gebruikt `elastic` voor
