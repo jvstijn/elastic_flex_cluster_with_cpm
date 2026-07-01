@@ -1,0 +1,66 @@
+{
+  "central-cluster": {
+    "ingest_hosts": "https://central.kaposi.net",
+    "dc": "dc-central"
+  },
+  "cluster01": {
+    "ingest_hosts": "https://cluster01.kaposi.net",
+    "dc": "dc-01"
+  },
+  "cluster02": {
+    "ingest_hosts": "https://cluster02.kaposi.net",
+    "dc": "dc-02"
+  },
+  "cluster03": {
+    "ingest_hosts": "https://cluster03.kaposi.net",
+    "dc": "dc-03"
+  },
+  "cluster04": {
+    "ingest_hosts": "https://cluster04.kaposi.net",
+    "dc": "dc-04"
+  },
+  "cluster05": {
+    "ingest_hosts": "https://cluster05.kaposi.net",
+    "dc": "dc-05"
+  },
+  "cluster06": {
+    "ingest_hosts": "https://cluster06.kaposi.net",
+    "dc": "dc-06"
+  },
+  "cluster07": {
+    "ingest_hosts": "https://cluster07.kaposi.net",
+    "dc": "dc-07"
+  },
+  "cluster08": {
+    "ingest_hosts": "https://cluster08.kaposi.net",
+    "dc": "dc-08"
+  },
+  "cluster09": {
+    "ingest_hosts": "https://cluster09.kaposi.net",
+    "dc": "dc-09"
+  },
+  "cluster10": {
+    "ingest_hosts": "https://cluster10.kaposi.net",
+    "dc": "dc-10"
+  },
+  "cluster11": {
+    "ingest_hosts": "https://cluster11.kaposi.net",
+    "dc": "dc-11"
+  },
+  "cluster12": {
+    "ingest_hosts": "https://cluster12.kaposi.net",
+    "dc": "dc-12"
+  },
+  "cluster13": {
+    "ingest_hosts": "https://cluster13.kaposi.net",
+    "dc": "dc-13"
+  },
+  "cluster14": {
+    "ingest_hosts": "https://cluster14.kaposi.net",
+    "dc": "dc-14"
+  },
+  "cluster15": {
+    "ingest_hosts": "https://cluster15.kaposi.net",
+    "dc": "dc-15"
+  }
+}

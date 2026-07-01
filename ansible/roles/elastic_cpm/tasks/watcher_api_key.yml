@@ -6,7 +6,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       query:
@@ -26,7 +26,7 @@
     url_username: "{{ elastic_usr }}"
     url_password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     method: POST
     body_format: json
     body:
@@ -53,7 +53,7 @@
     url_username: "{{ elastic_usr }}"
     url_password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       ids: "{{ old_keys.json.api_keys | map(attribute='id') | list }}"

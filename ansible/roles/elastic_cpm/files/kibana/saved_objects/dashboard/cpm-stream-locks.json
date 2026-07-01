@@ -1,0 +1,46 @@
+{
+  "attributes": {
+    "title": "CPM \u2014 Stream locks",
+    "description": "CPM \u2014 Stream locks",
+    "panelsJSON": "[{\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 0, \"w\": 48, \"h\": 6, \"i\": \"e989d59b-ccbd-5f30-b42a-07b3e6fb057f\"}, \"panelIndex\": \"e989d59b-ccbd-5f30-b42a-07b3e6fb057f\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_0\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 6, \"w\": 12, \"h\": 8, \"i\": \"d5203fa9-16e4-54f1-9b60-007704b483fe\"}, \"panelIndex\": \"d5203fa9-16e4-54f1-9b60-007704b483fe\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_1\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 12, \"y\": 6, \"w\": 36, \"h\": 16, \"i\": \"56aefe0f-63f2-5905-b653-7ed9d315e5a2\"}, \"panelIndex\": \"56aefe0f-63f2-5905-b653-7ed9d315e5a2\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_2\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 22, \"w\": 48, \"h\": 6, \"i\": \"7456481b-abad-5b96-b3c1-2ea612b7cbec\"}, \"panelIndex\": \"7456481b-abad-5b96-b3c1-2ea612b7cbec\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_3\"}, {\"version\": \"8.19.0\", \"type\": \"search\", \"gridData\": {\"x\": 0, \"y\": 28, \"w\": 48, \"h\": 14, \"i\": \"47f5d97d-9edc-559a-9232-91f2dd8c365e\"}, \"panelIndex\": \"47f5d97d-9edc-559a-9232-91f2dd8c365e\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_4\"}]",
+    "optionsJSON": "{\"useMargins\": true, \"syncColors\": false, \"syncCursor\": true, \"syncTooltips\": false, \"hidePanelTitles\": false}",
+    "version": 1,
+    "timeRestore": false,
+    "timeTo": "now",
+    "timeFrom": "now-7d",
+    "refreshInterval": {
+      "pause": true,
+      "value": 0
+    },
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"language\": \"kuery\", \"query\": \"\"}, \"filter\": []}"
+    }
+  },
+  "references": [
+    {
+      "name": "panel_0",
+      "type": "visualization",
+      "id": "cpm-vis-nav-stream-locks"
+    },
+    {
+      "name": "panel_1",
+      "type": "visualization",
+      "id": "cpm-vis-stream-lock-count"
+    },
+    {
+      "name": "panel_2",
+      "type": "visualization",
+      "id": "cpm-vis-stream-locks-help"
+    },
+    {
+      "name": "panel_3",
+      "type": "visualization",
+      "id": "cpm-vis-stream-locks-status"
+    },
+    {
+      "name": "panel_4",
+      "type": "search",
+      "id": "cpm-search-stream-locks"
+    }
+  ]
+}

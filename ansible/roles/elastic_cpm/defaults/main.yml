@@ -1,5 +1,21 @@
 ---
+# Must match the literal in templates/cpm_monitoring_search_url.j2 ({% raw %} blocks)
 cpm_monitoring_index: ".monitoring-es-8-*"
+
+cpm_field_cluster_id_default: elasticsearch.cluster.id
+cpm_field_heap_default: elasticsearch.node.stats.jvm.mem.heap.used.pct
+cpm_field_shards_default: elasticsearch.cluster.stats.indices.shards.count
+cpm_field_heap_candidates:
+  - elasticsearch.node.stats.jvm.mem.heap.used.pct
+  - node_stats.jvm.mem.heap.used.pct
+  - elasticsearch.node.stats.jvm.mem.heap_used_percent
+  - node_stats.jvm.mem.heap_used_percent
+cpm_field_shards_candidates:
+  - elasticsearch.cluster.stats.indices.shards.count
+  - cluster_stats.indices.shards.count
+  - elasticsearch.cluster.stats.indices.shards.total
+  - cluster_stats.indices.shards.total
+
 cpm_ml_reinstall: false
 cpm_clean_indices: false
 
@@ -45,6 +61,11 @@ cpm_watchers:
 cpm_pipeline_templates:
   - { id: catchall, file: json/cpm-pipeline-template-catchall.json }
   - { id: dedicated, file: json/cpm-pipeline-template-dedicated.json }
+
+# Kibana saved-objects / data-views API (authenticate as elastic, not kibana_system)
+cpm_kibana_api_headers:
+  kbn-xsrf: "true"
+  Content-Type: "application/json"
 
 # Optional: patch ingest_hosts / dc after registry-sync (see group_vars)
 cpm_cluster_registry: {}

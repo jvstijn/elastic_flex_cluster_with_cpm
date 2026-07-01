@@ -6,7 +6,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+        validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       record_execution: true
@@ -23,7 +23,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+        validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       record_execution: true
@@ -36,7 +36,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+        validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       record_execution: true
@@ -49,7 +49,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+        validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       size: 1
@@ -66,7 +66,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+        validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       data_stream_type: logs
@@ -88,7 +88,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+        validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       record_execution: true
@@ -104,7 +104,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+        validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200]
   register: cpm_existing_pipelines
 
@@ -115,7 +115,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+        validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200, 404]
   loop: "{{ cpm_existing_pipelines.json | dict2items }}"
   when: "'cpm-' in item.key or item.key == 'kafka-to-central'"
@@ -129,7 +129,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+        validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       record_execution: true
@@ -143,7 +143,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+        validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200, 404]
   when: cpm_bootstrap_remove_kafka_pipeline | bool
 
@@ -154,7 +154,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+        validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200]
   register: cpm_bootstrap_pipelines_final
 
@@ -169,7 +169,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+        validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       size: 10

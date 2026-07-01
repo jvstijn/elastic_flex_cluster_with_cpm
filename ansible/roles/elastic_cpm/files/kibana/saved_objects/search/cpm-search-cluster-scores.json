@@ -1,0 +1,33 @@
+{
+  "attributes": {
+    "title": "Cluster load & health scores",
+    "description": "",
+    "columns": [
+      "cluster_name",
+      "load_score",
+      "write_queue_forecast",
+      "total_score",
+      "disk_used_pct_forecast",
+      "jvm_heap_pct_forecast",
+      "shard_score",
+      "alert",
+      "scored_at"
+    ],
+    "sort": [
+      [
+        "load_score",
+        "desc"
+      ]
+    ],
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-cluster-scores"
+    }
+  ]
+}

@@ -6,7 +6,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200]
   loop: "{{ cpm_ml_detectors }}"
   loop_control:
@@ -21,7 +21,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200]
   loop: "{{ cpm_watchers }}"
   loop_control:
@@ -35,6 +35,6 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200]
   tags: [verify, never]

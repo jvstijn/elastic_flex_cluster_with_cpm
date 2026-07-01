@@ -1,0 +1,218 @@
+{
+  "data_views": [
+    {
+      "id": "cpm-dv-cluster-registry",
+      "title": "cpm-cluster-registry",
+      "time_field": null
+    },
+    {
+      "id": "cpm-dv-pipeline-state",
+      "title": "cpm-pipeline-state",
+      "time_field": null
+    },
+    {
+      "id": "cpm-dv-pipeline-history",
+      "title": "cpm-pipeline-history",
+      "time_field": "recorded_at"
+    },
+    {
+      "id": "cpm-dv-routing-config",
+      "title": "cpm-routing-config",
+      "time_field": null
+    },
+    {
+      "id": "cpm-dv-routing-suggestions",
+      "title": "cpm-routing-suggestions",
+      "time_field": "suggested_at"
+    },
+    {
+      "id": "cpm-dv-watcher-executions",
+      "title": "cpm-watcher-executions",
+      "time_field": "recorded_at"
+    },
+    {
+      "id": "cpm-dv-stream-coverage",
+      "title": "cpm-stream-coverage",
+      "time_field": "recorded_at"
+    },
+    {
+      "id": "cpm-dv-cluster-scores",
+      "title": "cpm-cluster-scores",
+      "time_field": null
+    }
+  ],
+  "saved_objects": [
+    {
+      "type": "visualization",
+      "id": "cpm-vis-nav-overview",
+      "file": "saved_objects/visualization/cpm-vis-nav-overview.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-nav-assignments",
+      "file": "saved_objects/visualization/cpm-vis-nav-assignments.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-nav-history",
+      "file": "saved_objects/visualization/cpm-vis-nav-history.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-nav-stream-locks",
+      "file": "saved_objects/visualization/cpm-vis-nav-stream-locks.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-watcher-chain",
+      "file": "saved_objects/visualization/cpm-vis-watcher-chain.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-stream-locks-help",
+      "file": "saved_objects/visualization/cpm-vis-stream-locks-help.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-pipeline-assignments-intro",
+      "file": "saved_objects/visualization/cpm-vis-pipeline-assignments-intro.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-pipeline-history-intro",
+      "file": "saved_objects/visualization/cpm-vis-pipeline-history-intro.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-stream-locks-link",
+      "file": "saved_objects/visualization/cpm-vis-stream-locks-link.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-cluster-status-pie",
+      "file": "saved_objects/visualization/cpm-vis-cluster-status-pie.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-active-count",
+      "file": "saved_objects/visualization/cpm-vis-active-count.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-inactive-count",
+      "file": "saved_objects/visualization/cpm-vis-inactive-count.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-watcher-ok",
+      "file": "saved_objects/visualization/cpm-vis-watcher-ok.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-watcher-fail",
+      "file": "saved_objects/visualization/cpm-vis-watcher-fail.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-streams-managed",
+      "file": "saved_objects/visualization/cpm-vis-streams-managed.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-streams-unmanaged",
+      "file": "saved_objects/visualization/cpm-vis-streams-unmanaged.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-stream-lock-count",
+      "file": "saved_objects/visualization/cpm-vis-stream-lock-count.json"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-cluster-load-bar",
+      "file": "saved_objects/visualization/cpm-vis-cluster-load-bar.json"
+    },
+    {
+      "type": "search",
+      "id": "cpm-search-clusters",
+      "file": "saved_objects/search/cpm-search-clusters.json"
+    },
+    {
+      "type": "search",
+      "id": "cpm-search-cluster-scores",
+      "file": "saved_objects/search/cpm-search-cluster-scores.json"
+    },
+    {
+      "type": "search",
+      "id": "cpm-search-pipeline-state",
+      "file": "saved_objects/search/cpm-search-pipeline-state.json"
+    },
+    {
+      "type": "search",
+      "id": "cpm-search-pipeline-moves-7d",
+      "file": "saved_objects/search/cpm-search-pipeline-moves-7d.json"
+    },
+    {
+      "type": "search",
+      "id": "cpm-search-pipeline-history-7d",
+      "file": "saved_objects/search/cpm-search-pipeline-history-7d.json"
+    },
+    {
+      "type": "search",
+      "id": "cpm-search-stream-locks",
+      "file": "saved_objects/search/cpm-search-stream-locks.json"
+    },
+    {
+      "type": "search",
+      "id": "cpm-search-routing-suggestions",
+      "file": "saved_objects/search/cpm-search-routing-suggestions.json"
+    },
+    {
+      "type": "search",
+      "id": "cpm-search-watcher-status",
+      "file": "saved_objects/search/cpm-search-watcher-status.json"
+    },
+    {
+      "type": "search",
+      "id": "cpm-search-stream-coverage",
+      "file": "saved_objects/search/cpm-search-stream-coverage.json"
+    },
+    {
+      "type": "search",
+      "id": "cpm-search-stream-unmanaged",
+      "file": "saved_objects/search/cpm-search-stream-unmanaged.json"
+    },
+    {
+      "type": "dashboard",
+      "id": "cpm-stream-locks",
+      "file": "saved_objects/dashboard/cpm-stream-locks.json"
+    },
+    {
+      "type": "dashboard",
+      "id": "cpm-pipeline-assignments",
+      "file": "saved_objects/dashboard/cpm-pipeline-assignments.json"
+    },
+    {
+      "type": "dashboard",
+      "id": "cpm-pipeline-history",
+      "file": "saved_objects/dashboard/cpm-pipeline-history.json"
+    },
+    {
+      "type": "dashboard",
+      "id": "cpm-platform-overview",
+      "file": "saved_objects/dashboard/cpm-platform-overview.json"
+    }
+  ],
+  "dynamic_visualizations": [
+    {
+      "type": "visualization",
+      "id": "cpm-vis-routing-weights-md",
+      "template": "kibana/cpm-vis-routing-weights-md.json.j2"
+    },
+    {
+      "type": "visualization",
+      "id": "cpm-vis-stream-locks-status",
+      "template": "kibana/cpm-vis-stream-locks-status.json.j2"
+    }
+  ]
+}

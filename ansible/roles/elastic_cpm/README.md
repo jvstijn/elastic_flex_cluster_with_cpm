@@ -8,5 +8,6 @@ Deploys the full CPM stack on central Elasticsearch:
 - Ingest pipeline `cpm-watcher-status-flatten` + transform `cpm-watcher-status-sync`
 - 6 Watcher definitions
 - Pipeline templates and `_global` routing weights
+- Kibana dashboards (4 pages + data views) via `tasks/dashboard.yml`
 
 See [../../README.md](../../README.md) for usage.

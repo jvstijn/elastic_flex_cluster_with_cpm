@@ -1,0 +1,32 @@
+{
+  "attributes": {
+    "title": "Current pipeline assignments",
+    "description": "",
+    "columns": [
+      "data_stream_type",
+      "dataset",
+      "namespace",
+      "cluster_id",
+      "pipeline_id",
+      "pipeline_type",
+      "topic",
+      "updated_at"
+    ],
+    "sort": [
+      [
+        "updated_at",
+        "desc"
+      ]
+    ],
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-pipeline-state"
+    }
+  ]
+}

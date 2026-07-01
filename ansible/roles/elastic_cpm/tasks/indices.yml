@@ -6,7 +6,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200, 404]
   loop: "{{ cpm_indices }}"
   loop_control:
@@ -21,7 +21,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body: "{{ lookup('file', role_path + '/files/' + item.file) }}"
     status_code: [200, 201, 400]
@@ -37,7 +37,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       properties: "{{ (lookup('file', role_path + '/files/' + item.file) | from_json).mappings.properties }}"

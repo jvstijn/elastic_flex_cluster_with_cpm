@@ -1,12 +1,16 @@
 ---
+- name: Resolve monitoring search URL
+  ansible.builtin.set_fact:
+    cpm_monitoring_search_url: "{{ lookup('template', 'cpm_monitoring_search_url.j2') | trim }}"
+
 - name: Probe monitoring cluster ID field
   ansible.builtin.uri:
-    url: "{{ elastic_base_url }}/{{ cpm_monitoring_index }}/_search"
+    url: "{{ cpm_monitoring_search_url }}"
     method: POST
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       size: 1
@@ -30,12 +34,12 @@
 
 - name: Probe JVM heap field candidates
   ansible.builtin.uri:
-    url: "{{ elastic_base_url }}/{{ cpm_monitoring_index }}/_search"
+    url: "{{ cpm_monitoring_search_url }}"
     method: POST
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       size: 0
@@ -49,11 +53,7 @@
           max:
             field: "{{ item }}"
     status_code: [200]
-  loop:
-    - elasticsearch.node.stats.jvm.mem.heap.used.pct
-    - node_stats.jvm.mem.heap.used.pct
-    - elasticsearch.node.stats.jvm.mem.heap_used_percent
-    - node_stats.jvm.mem.heap_used_percent
+  loop: "{{ cpm_field_heap_candidates }}"
   register: cpm_probe_heap
   failed_when: false
 
@@ -62,19 +62,21 @@
     cpm_field_heap: "{{ item.item }}"
   loop: "{{ cpm_probe_heap.results }}"
   when:
+    - cpm_field_heap is not defined
     - item.json is defined
-    - item.json.aggregations.probe.value is not none
+    - ((item.json.aggregations | default({})).probe | default({})).value is defined
+    - ((item.json.aggregations | default({})).probe | default({})).value is not none
   loop_control:
     label: "{{ item.item }}"
 
 - name: Probe shard count field candidates
   ansible.builtin.uri:
-    url: "{{ elastic_base_url }}/{{ cpm_monitoring_index }}/_search"
+    url: "{{ cpm_monitoring_search_url }}"
     method: POST
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       size: 0
@@ -88,11 +90,7 @@
           max:
             field: "{{ item }}"
     status_code: [200]
-  loop:
-    - elasticsearch.cluster.stats.indices.shards.count
-    - cluster_stats.indices.shards.count
-    - elasticsearch.cluster.stats.indices.shards.total
-    - cluster_stats.indices.shards.total
+  loop: "{{ cpm_field_shards_candidates }}"
   register: cpm_probe_shards
   failed_when: false
 
@@ -101,19 +99,21 @@
     cpm_field_shards: "{{ item.item }}"
   loop: "{{ cpm_probe_shards.results }}"
   when:
+    - cpm_field_shards is not defined
     - item.json is defined
-    - item.json.aggregations.probe.value is not none
+    - ((item.json.aggregations | default({})).probe | default({})).value is defined
+    - ((item.json.aggregations | default({})).probe | default({})).value is not none
   loop_control:
     label: "{{ item.item }}"
 
 - name: Probe write queue field
   ansible.builtin.uri:
-    url: "{{ elastic_base_url }}/{{ cpm_monitoring_index }}/_search"
+    url: "{{ cpm_monitoring_search_url }}"
     method: POST
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       size: 1
@@ -135,6 +135,21 @@
          if 'node_stats' in (cpm_probe_write_queue.json.hits.hits[0]._source | default({}))
          else 'elasticsearch.node.stats.thread_pool.write.queue.count' }}
   when: cpm_probe_write_queue.json.hits.hits | length > 0
+
+- name: Apply default heap field when probe inconclusive
+  ansible.builtin.set_fact:
+    cpm_field_heap: "{{ cpm_field_heap_default }}"
+  when: cpm_field_heap is not defined
+
+- name: Apply default shards field when probe inconclusive
+  ansible.builtin.set_fact:
+    cpm_field_shards: "{{ cpm_field_shards_default }}"
+  when: cpm_field_shards is not defined
+
+- name: Apply default cluster ID field when probe inconclusive
+  ansible.builtin.set_fact:
+    cpm_field_cluster_id: "{{ cpm_field_cluster_id_default }}"
+  when: cpm_field_cluster_id is not defined
 
 - name: Fail when required monitoring fields are missing
   ansible.builtin.fail:

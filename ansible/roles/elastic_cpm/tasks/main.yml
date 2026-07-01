@@ -35,6 +35,10 @@
       ansible.builtin.include_tasks: registry_patch.yml
       tags: [registry]
 
+    - name: Deploy Kibana dashboards
+      ansible.builtin.include_tasks: dashboard.yml
+      tags: [dashboard]
+
     - name: Verify CPM installation
       ansible.builtin.include_tasks: verify.yml
       tags: [verify, never]

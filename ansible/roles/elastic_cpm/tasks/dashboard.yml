@@ -1,0 +1,248 @@
+---
+- name: Load Kibana dashboard manifest
+  ansible.builtin.set_fact:
+    cpm_kibana_manifest: "{{ lookup('file', role_path + '/files/kibana/manifest.json') | from_json }}"
+  tags: [dashboard]
+
+- name: Fetch routing weights for dashboard panel
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-routing-config/_doc/_global"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    status_code: [200, 404]
+  register: cpm_routing_global
+  tags: [dashboard]
+
+- name: Count configured stream locks
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-routing-config/_count"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body:
+      query:
+        term:
+          config_type: stream_lock
+    status_code: [200]
+  register: cpm_stream_lock_count
+  tags: [dashboard]
+
+- name: Remove CPM data view by id (idempotent)
+  ansible.builtin.uri:
+    url: "{{ kibana_base_url }}/api/data_views/data_view/{{ item.id }}"
+    method: DELETE
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    headers: "{{ cpm_kibana_api_headers }}"
+    status_code: [200, 404]
+  loop: "{{ cpm_kibana_manifest.data_views }}"
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [dashboard]
+
+- name: Find conflicting Kibana data view by title
+  ansible.builtin.uri:
+    url: "{{ kibana_base_url }}/api/data_views/data_view/find?title={{ item.title | urlencode }}"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    headers: "{{ cpm_kibana_api_headers }}"
+    status_code: [200, 404]
+  loop: "{{ cpm_kibana_manifest.data_views }}"
+  loop_control:
+    label: "{{ item.id }}"
+  register: cpm_data_view_find
+  tags: [dashboard]
+
+- name: Remove conflicting Kibana data view by title
+  ansible.builtin.uri:
+    url: "{{ kibana_base_url }}/api/data_views/data_view/{{ item.json.data_view.id }}"
+    method: DELETE
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    headers: "{{ cpm_kibana_api_headers }}"
+    status_code: [200, 404]
+  loop: "{{ cpm_data_view_find.results }}"
+  when:
+    - item.status == 200
+    - item.json.data_view.id is defined
+    - item.json.data_view.id != item.item.id
+  loop_control:
+    label: "{{ item.item.id }}"
+  tags: [dashboard]
+
+- name: Create CPM Kibana data views
+  ansible.builtin.uri:
+    url: "{{ kibana_base_url }}/api/data_views/data_view"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    headers: "{{ cpm_kibana_api_headers }}"
+    body_format: json
+    body:
+      data_view: >-
+        {{ {'id': item.id, 'title': item.title, 'name': item.title}
+           | combine({'timeFieldName': item.time_field} if item.time_field else {}) }}
+    status_code: [200, 201]
+  loop: "{{ cpm_kibana_manifest.data_views }}"
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [dashboard]
+
+- name: Deploy static Kibana visualizations and searches
+  ansible.builtin.uri:
+    url: "{{ kibana_base_url }}/api/saved_objects/{{ item.type }}/{{ item.id }}?overwrite=true"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    headers: "{{ cpm_kibana_api_headers }}"
+    body_format: json
+    body: "{{ lookup('file', role_path + '/files/kibana/' + item.file) | from_json }}"
+    status_code: [200, 201]
+  loop: "{{ cpm_kibana_manifest.saved_objects | selectattr('type', 'in', ['visualization', 'search']) | list }}"
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [dashboard]
+
+- name: Build routing weights markdown visualization body
+  ansible.builtin.set_fact:
+    cpm_kibana_routing_weights_body:
+      attributes:
+        title: Routing weights
+        visState: "{{ routing_weights_vis | to_json }}"
+        uiStateJSON: "{}"
+        description: ""
+        kibanaSavedObjectMeta:
+          searchSourceJSON: '{"query":{"query":"","language":"kuery"},"filter":[]}'
+      references: []
+  vars:
+    rc_weights: "{{ cpm_routing_global.json._source.weights | default({}) }}"
+    rc_src: "{{ cpm_routing_global.json._source | default({}) }}"
+    routing_weights_md: |-
+      ### Scoring weights (`cpm-routing-config/_global`)
+
+      - disk: {{ rc_weights.disk | default('-') }}
+      - jvm: {{ rc_weights.jvm | default('-') }}
+      - shard: {{ rc_weights.shard | default('-') }}
+      - load: {{ rc_weights.load | default('-') }}
+
+      Alert threshold: {{ rc_src.alert_threshold | default('-') }}
+      Forecast horizon (h): {{ rc_src.forecast_horizon_hours | default('-') }}
+    routing_weights_vis:
+      title: Routing weights
+      type: markdown
+      aggs: []
+      params:
+        fontSize: 14
+        openLinksInNewTab: true
+        markdown: "{{ routing_weights_md }}"
+  tags: [dashboard]
+
+- name: Deploy routing weights markdown visualization
+  ansible.builtin.uri:
+    url: "{{ kibana_base_url }}/api/saved_objects/visualization/cpm-vis-routing-weights-md?overwrite=true"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    headers: "{{ cpm_kibana_api_headers }}"
+    body_format: json
+    body: "{{ cpm_kibana_routing_weights_body }}"
+    status_code: [200, 201]
+  tags: [dashboard]
+
+- name: Build stream locks status markdown visualization body
+  ansible.builtin.set_fact:
+    cpm_kibana_stream_locks_status_body:
+      attributes:
+        title: Active stream locks
+        visState: "{{ stream_locks_status_vis | to_json }}"
+        uiStateJSON: "{}"
+        description: ""
+        kibanaSavedObjectMeta:
+          searchSourceJSON: '{"query":{"query":"","language":"kuery"},"filter":[]}'
+      references: []
+  vars:
+    lock_count: "{{ cpm_stream_lock_count.json.count | default(0) | int }}"
+    stream_locks_status_md: >-
+      {% if lock_count > 0 -%}
+      ### Active stream locks
+
+      **{{ lock_count }} lock(s) configured** in `cpm-routing-config` (`config_type: stream_lock`).
+
+      The table below lists each lock. After changes, run **cpm-state-manager** then **cpm-pipeline-manager**.
+      {%- else -%}
+      ### Active stream locks
+
+      **0 locks configured** — CPM is routing automatically. An empty table below is expected.
+
+      Create a lock with the PUT example above; it will appear in the table after refresh.
+      {%- endif %}
+    stream_locks_status_vis:
+      title: Active stream locks
+      type: markdown
+      aggs: []
+      params:
+        fontSize: 14
+        openLinksInNewTab: true
+        markdown: "{{ stream_locks_status_md }}"
+  tags: [dashboard]
+
+- name: Deploy stream locks status markdown visualization
+  ansible.builtin.uri:
+    url: "{{ kibana_base_url }}/api/saved_objects/visualization/cpm-vis-stream-locks-status?overwrite=true"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    headers: "{{ cpm_kibana_api_headers }}"
+    body_format: json
+    body: "{{ cpm_kibana_stream_locks_status_body }}"
+    status_code: [200, 201]
+  tags: [dashboard]
+
+- name: Deploy Kibana dashboards
+  ansible.builtin.uri:
+    url: "{{ kibana_base_url }}/api/saved_objects/{{ item.type }}/{{ item.id }}?overwrite=true"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    headers: "{{ cpm_kibana_api_headers }}"
+    body_format: json
+    body: "{{ lookup('file', role_path + '/files/kibana/' + item.file) | from_json }}"
+    status_code: [200, 201]
+  loop: "{{ cpm_kibana_manifest.saved_objects | selectattr('type', 'equalto', 'dashboard') | list }}"
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [dashboard]
+
+- name: Show deployed CPM dashboards
+  ansible.builtin.debug:
+    msg: >-
+      {{ kibana_base_url }}/app/dashboards#/view/{{ item.id }}
+  loop:
+    - { id: cpm-platform-overview }
+    - { id: cpm-pipeline-assignments }
+    - { id: cpm-pipeline-history }
+    - { id: cpm-stream-locks }
+  tags: [dashboard]

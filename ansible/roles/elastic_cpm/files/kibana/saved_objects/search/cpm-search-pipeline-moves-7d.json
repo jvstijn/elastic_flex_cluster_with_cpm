@@ -1,0 +1,33 @@
+{
+  "attributes": {
+    "title": "Pipeline moves (last 7 days)",
+    "description": "",
+    "columns": [
+      "recorded_at",
+      "dataset",
+      "data_stream_type",
+      "namespace",
+      "cluster_id",
+      "previous_cluster_id",
+      "cluster_name",
+      "pipeline_id",
+      "move_detected"
+    ],
+    "sort": [
+      [
+        "recorded_at",
+        "desc"
+      ]
+    ],
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"move_detected : true\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-pipeline-history"
+    }
+  ]
+}

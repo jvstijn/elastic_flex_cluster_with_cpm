@@ -1,6 +1,12 @@
 ---
 - name: Compute default datafeed start (now-2d UTC)
-  ansible.builtin.command: date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+        from datetime import datetime, timedelta, timezone;
+        print((datetime.now(timezone.utc) - timedelta(days=2)).strftime('%Y-%m-%dT%H:%M:%SZ'))
   register: cpm_default_start
   changed_when: false
   when: cpm_datafeed_start | length == 0
@@ -18,7 +24,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200, 404]
   loop: "{{ cpm_ml_datafeeds }}"
   loop_control:
@@ -33,7 +39,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200, 404]
   loop: "{{ cpm_ml_detectors }}"
   loop_control:
@@ -48,7 +54,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200, 404]
   loop: "{{ cpm_ml_datafeeds }}"
   loop_control:
@@ -63,7 +69,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200, 404]
   loop: "{{ cpm_ml_detectors }}"
   loop_control:
@@ -78,7 +84,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200, 404]
   loop: "{{ cpm_ml_detectors }}"
   loop_control:
@@ -93,7 +99,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body: "{{ lookup('file', role_path + '/files/' + item.item.file) }}"
     status_code: [200, 201]
@@ -133,7 +139,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200, 404]
   loop: "{{ cpm_ml_datafeeds }}"
   loop_control:
@@ -148,7 +154,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body: "{{ cpm_datafeed_bodies[item.item.id] }}"
     status_code: [200, 201]
@@ -165,7 +171,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200]
   loop: "{{ cpm_ml_detectors }}"
   loop_control:
@@ -180,7 +186,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200]
   loop: "{{ cpm_ml_detectors_state.results }}"
   when: item.json.jobs[0].state not in ['opened', 'opening']
@@ -195,7 +201,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body:
       start: "{{ cpm_effective_datafeed_start }}"

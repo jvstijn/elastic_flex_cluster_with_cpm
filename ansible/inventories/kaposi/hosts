@@ -1,0 +1,4 @@
+# Reference environment (imr-dod-vm) via public nginx hostnames.
+# Ansible runs locally and calls HTTPS APIs on :443.
+[cpm]
+localhost ansible_connection=local

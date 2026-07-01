@@ -1,4 +1,5 @@
 .env
+ansible/.env
 
 # Generated TLS material (setup-certs.sh output if copied to host)
 certs/

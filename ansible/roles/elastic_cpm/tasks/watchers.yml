@@ -6,7 +6,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body: "{{ lookup('template', item.file) }}"
     status_code: [200, 201]

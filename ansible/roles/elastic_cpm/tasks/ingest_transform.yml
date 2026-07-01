@@ -6,10 +6,22 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body: "{{ lookup('file', role_path + '/files/json/ingest_pipeline_cpm-watcher-status-flatten.json') }}"
     status_code: [200, 201]
+  tags: [transform]
+
+- name: Check watcher status transform exists
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    status_code: [200, 404]
+  register: cpm_transform_exists
   tags: [transform]
 
 - name: Install CPM watcher status transform
@@ -19,10 +31,11 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
     body: "{{ lookup('file', role_path + '/files/json/transform_cpm-watcher-status-sync.json') }}"
     status_code: [200, 201]
+  when: cpm_transform_exists.status == 404
   tags: [transform]
 
 - name: Check watcher status transform state
@@ -32,7 +45,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200]
   register: cpm_transform_stats
   tags: [transform]
@@ -44,7 +57,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200]
   when: cpm_transform_stats.json.transforms[0].state == 'failed'
   tags: [transform]
@@ -56,7 +69,7 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200]
   when: cpm_transform_stats.json.transforms[0].state == 'failed'
   tags: [transform]
@@ -68,6 +81,6 @@
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
     force_basic_auth: true
-    validate_certs: false
+    validate_certs: "{{ cpm_validate_certs }}"
     status_code: [200, 409]
   tags: [transform]

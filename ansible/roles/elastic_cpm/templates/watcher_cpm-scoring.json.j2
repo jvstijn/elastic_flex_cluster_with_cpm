@@ -1,3 +1,4 @@
+{% raw %}
 {
   "trigger": {
     "schedule": {
@@ -294,13 +295,13 @@
       "max_iterations": 20,
       "webhook": {
         "scheme": "https",
-        "host": "YOUR_ES_HOST",
-        "port": 443,
+        "host": "{% endraw %}{{ webhook_host }}{% raw %}",
+        "port": 9200,
         "method": "put",
         "path": "/cpm-cluster-scores/_doc/latest-{{ctx.payload.cluster_id}}",
         "params": {},
         "headers": {
-          "Authorization": "ApiKey YOUR_API_KEY",
+          "Authorization": "ApiKey {% endraw %}{{ watcher_api_key.encoded }}{% raw %}",
           "Content-Type": "application/json"
         },
         "body": "{{#toJson}}ctx.payload{{/toJson}}"
@@ -308,3 +309,4 @@
     }
   }
 }
+{% endraw %}
