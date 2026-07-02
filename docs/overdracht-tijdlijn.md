@@ -4,6 +4,32 @@ Verslag voor de overdracht: wat is er deze week gewijzigd en waarom.
 Periode: **di 30-06** t/m **do 02-07-2026**. Branch: `mod-jan` (klaar voor PR → `main`).
 (Maandag 29-06 zijn er geen wijzigingen; het werk begon dinsdag.)
 
+## Executive summary
+
+Deze week is de CPM-stack op drie vlakken verbeterd en gehard:
+
+1. **Coverage-checker gebouwd** — een script dat laat zien welke data streams wél/niet
+   door een CPM Logstash-pipeline worden gedekt (alleen actieve clusters, laatste 24u).
+   Dit bracht twee bugs aan het licht.
+2. **Twee state-manager bugs opgelost** (watcher én workflow): de discovery convergeerde
+   te traag (dagen i.p.v. één run) en sloeg namespace-loze datasets stil over. Netto
+   ging de dekking van **239 → 9 MISSING** in één run-cyclus (de 9 zijn een
+   test-data-artefact, geen bug).
+3. **Kafka + Logstash-topologie neergezet en gehard**: een 3-broker Kafka-cluster met
+   web-GUI, één Logstash per ES-cluster, en een router die `test-dataset` naar het juiste
+   topic stuurt (of naar een dead-letter-queue). Daarna operationeel hardened:
+   Kafka-**healthchecks** (opstartvolgorde), **`KAFKA_LOG_DIRS`** (data ging eerst
+   verloren bij elke recreate), een geheugentrim (~16 → ~14,6 GB) en een crashende
+   `logstash-beats` gefixt.
+
+**Stand van zaken:** de stack draait volledig, Kafka is gevuld met ~1,8 mln events
+(nu persistent), alles is gecommit/gepusht op branch **`mod-jan`** (0 achter op `main`,
+klaar voor een conflictvrije PR). **Belangrijkste openstaande punt:** de daadwerkelijke
+doorstroom Kafka→Logstash→ES vereist nog het bedraden van de pipeline-`ingest_hosts`
+(nu container-ID's) + per-cluster ingest-API-keys, plus het activeren van `node.attr.dc`.
+Verder moet de PR nog aangemaakt worden. Details staan hieronder en in de twee
+gelinkte docs.
+
 ## 0. Context in één alinea
 
 De stack is een Docker + Ansible Elasticsearch-omgeving (Elastic 9.4.2) met **CPM**
