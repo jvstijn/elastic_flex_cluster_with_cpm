@@ -3,3 +3,4 @@
 
 # Built plugin distributables
 kibana_plugin/build/
+kibana_plugin/node_modules/
