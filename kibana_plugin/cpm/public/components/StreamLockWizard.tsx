@@ -14,6 +14,7 @@ import {
   EuiSelect,
   EuiTextArea,
   EuiText,
+  EuiTitle,
   EuiCode,
   EuiSpacer,
   EuiCallOut,

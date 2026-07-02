@@ -194,9 +194,29 @@
     label: "{{ item.item.id }}"
   tags: [ml]
 
-- name: Start CPM ML datafeeds
+- name: Wait for ML jobs to finish opening
+  ansible.builtin.pause:
+    seconds: 3
+  tags: [ml]
+
+- name: Check CPM ML datafeed state
   ansible.builtin.uri:
-    url: "{{ elastic_base_url }}/_ml/datafeeds/{{ item.id }}/_start"
+    url: "{{ elastic_base_url }}/_ml/datafeeds/{{ item.id }}/_stats"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    status_code: [200]
+  loop: "{{ cpm_ml_datafeeds }}"
+  loop_control:
+    label: "{{ item.id }}"
+  register: cpm_ml_datafeed_state
+  tags: [ml]
+
+- name: Start CPM ML datafeeds continuously (real-time, no end time)
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ml/datafeeds/{{ item.item.id }}/_start"
     method: POST
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
@@ -205,8 +225,19 @@
     body_format: json
     body:
       start: "{{ cpm_effective_datafeed_start }}"
-    status_code: [200, 409]
-  loop: "{{ cpm_ml_datafeeds }}"
+    status_code: [200]
+  loop: "{{ cpm_ml_datafeed_state.results }}"
+  when: item.json.datafeeds[0].state not in ['started', 'starting']
   loop_control:
-    label: "{{ item.id }}"
+    label: "{{ item.item.id }}"
+  tags: [ml]
+
+- name: Show CPM ML job and datafeed state
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.item.id }} job={{ item.json.jobs[0].state }}
+      (continuous datafeeds: opened job + _start with no end time)
+  loop: "{{ cpm_ml_detectors_state.results }}"
+  loop_control:
+    label: "{{ item.item.id }}"
   tags: [ml]

@@ -59,6 +59,18 @@ health="$(es_curl "${ES_URL}/_cluster/health")" || fail "Elasticsearch ${ES_URL}
 cluster="$(echo "${health}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['cluster_name'], d['status'], 'nodes='+str(d['number_of_nodes']))")"
 pass "Elasticsearch cluster health: ${cluster}"
 
+central_name="$(echo "${health}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cluster_name'])")"
+if [ "${central_name}" != "central-cluster" ]; then
+  fail "${ES_URL} returned cluster '${central_name}' (expected central-cluster). Nginx routing is wrong — on imr-dod-vm: cd ~/DoD/docker/reference && ./scripts/reload_nginx_routing.sh"
+fi
+pass "central hostname routes to central-cluster"
+
+remote05_name="$(es_curl "https://cluster05.kaposi.net/" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cluster_name',''))")" || fail "cluster05.kaposi.net"
+if [ "${remote05_name}" != "cluster05" ]; then
+  fail "cluster05.kaposi.net returned '${remote05_name}' (expected cluster05). Run reload_nginx_routing.sh on imr-dod-vm"
+fi
+pass "cluster05 hostname routes to cluster05"
+
 lic="$(es_curl "${ES_URL}/_license" | python3 -c "import sys,json; print(json.load(sys.stdin)['license']['type'])")" || fail "license API"
 pass "License: ${lic}"
 

@@ -36,7 +36,7 @@ extract_watches_specs:
     alt_watch_ids: []
   - watch_id: cpm-scoring
     template: watcher_cpm-scoring.json.j2
-    style: plain
+    style: scheme
     alt_watch_ids: []
   - watch_id: cpm-routing-advisor
     template: watcher_cpm-routing-advisor.json.j2

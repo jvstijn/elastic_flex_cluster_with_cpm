@@ -11,6 +11,12 @@ import {
 } from '../../common/constants';
 import type { RunChainResponse, WatcherRunResult } from '../../common/types';
 
+/** ES index mappings are strict; never persist Kibana/API metadata fields like `id`. */
+function withoutApiMeta<T extends Record<string, unknown>>(body: T): Omit<T, 'id'> {
+  const { id: _id, ...rest } = body;
+  return rest;
+}
+
 async function runWatcher(
   esClient: { transport: { request: (opts: object) => Promise<unknown> } },
   id: string
@@ -60,17 +66,19 @@ export function defineRoutes(router: IRouter) {
     async (context, request, response) => {
       const esClient = (await context.core).elasticsearch.client.asCurrentUser;
       const clusterId = (request.params as { clusterId: string }).clusterId;
-      const body = request.body as { active?: boolean; cluster_id?: string; cluster_name?: string };
+      const body = withoutApiMeta(request.body as Record<string, unknown>);
 
       try {
         const existing = await esClient.get({
           index: CPM_CLUSTER_REGISTRY,
           id: clusterId,
         });
+        const existingSource = existing._source as Record<string, unknown>;
         const source = {
-          ...(existing._source as object),
+          ...existingSource,
           ...body,
-          cluster_uuid: clusterId,
+          cluster_uuid: existingSource.cluster_uuid ?? clusterId,
+          cluster_id: existingSource.cluster_id ?? clusterId,
         };
         await esClient.index({
           index: CPM_CLUSTER_REGISTRY,
@@ -106,6 +114,9 @@ export function defineRoutes(router: IRouter) {
   router.put({ path: '/api/cpm/scoring', validate: {
     body: schema.object({
       weights: schema.object({}, { unknowns: 'allow' }),
+      write_queue_threshold: schema.number(),
+      shard_max_threshold: schema.number(),
+      kafka_group_id: schema.string(),
       alert_threshold: schema.number(),
       forecast_horizon_hours: schema.number(),
     }),
@@ -113,6 +124,9 @@ export function defineRoutes(router: IRouter) {
     const esClient = (await context.core).elasticsearch.client.asCurrentUser;
     const body = request.body as {
       weights: Record<string, number>;
+      write_queue_threshold: number;
+      shard_max_threshold: number;
+      kafka_group_id: string;
       alert_threshold: number;
       forecast_horizon_hours: number;
     };
@@ -121,6 +135,9 @@ export function defineRoutes(router: IRouter) {
     const doc = {
       config_type: CONFIG_TYPE_SCORING,
       weights: body.weights,
+      write_queue_threshold: body.write_queue_threshold,
+      shard_max_threshold: body.shard_max_threshold,
+      kafka_group_id: body.kafka_group_id,
       alert_threshold: body.alert_threshold,
       forecast_horizon_hours: body.forecast_horizon_hours,
       updated_at: new Date().toISOString(),
@@ -172,7 +189,7 @@ export function defineRoutes(router: IRouter) {
     async (context, request, response) => {
       const esClient = (await context.core).elasticsearch.client.asCurrentUser;
       const lockId = (request.params as { lockId: string }).lockId;
-      const body = request.body as Record<string, unknown>;
+      const body = withoutApiMeta(request.body as Record<string, unknown>);
       const username = (await context.core).security.authc.getCurrentUser()?.username ?? 'unknown';
 
       const doc = {
@@ -243,16 +260,7 @@ export function defineRoutes(router: IRouter) {
 
       const chain: string[] = body.watchers?.length
         ? body.watchers
-        : [...WATCHER_CHAIN];
-
-      if (body.includeForecast && !chain.includes(WATCHER_FORECAST)) {
-        const scoringIdx = chain.indexOf('cpm-scoring');
-        if (scoringIdx >= 0) {
-          chain.splice(scoringIdx, 0, WATCHER_FORECAST);
-        } else {
-          chain.unshift(WATCHER_FORECAST);
-        }
-      }
+        : [WATCHER_FORECAST, ...WATCHER_CHAIN];
 
       const results: WatcherRunResult[] = [];
       for (const id of chain) {

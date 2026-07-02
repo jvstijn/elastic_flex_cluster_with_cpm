@@ -3,6 +3,7 @@ import type { NotificationsStart } from '@kbn/core/public';
 import {
   EuiBasicTable,
   EuiButton,
+  EuiButtonIcon,
   EuiCallOut,
   EuiConfirmModal,
   EuiLoadingSpinner,
@@ -35,10 +36,7 @@ export function StreamLocksTab({ api, notifications }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const [lockRows, clusterRows] = await Promise.all([
-        api.getLocks(),
-        api.getClusters(),
-      ]);
+      const [lockRows, clusterRows] = await Promise.all([api.getLocks(), api.getClusters()]);
       setLocks(lockRows as LockRow[]);
       setClusters(clusterRows as Array<ClusterRegistryDoc & { id: string }>);
     } catch (err) {
@@ -92,19 +90,22 @@ export function StreamLocksTab({ api, notifications }: Props) {
     { field: 'namespace', name: 'Namespace' },
     { field: 'cluster_id', name: 'Cluster' },
     { field: 'pipeline_type', name: 'Pipeline' },
-    { field: 'reason', name: 'Reason' },
+    {
+      field: 'reason',
+      name: 'Reason',
+      render: (reason: string | undefined) => reason ?? '—',
+    },
     {
       name: 'Actions',
-      actions: [
-        {
-          name: 'Delete',
-          description: 'Remove stream lock',
-          type: 'icon' as const,
-          icon: 'trash',
-          color: 'danger' as const,
-          onClick: (row: LockRow) => setDeleteTarget(row),
-        },
-      ],
+      width: '60px',
+      render: (row: LockRow) => (
+        <EuiButtonIcon
+          iconType="trash"
+          color="danger"
+          aria-label={`Delete lock ${row.id}`}
+          onClick={() => setDeleteTarget(row)}
+        />
+      ),
     },
   ];
 
@@ -143,7 +144,7 @@ export function StreamLocksTab({ api, notifications }: Props) {
       </EuiButton>
 
       <EuiSpacer size="m" />
-      <EuiBasicTable items={locks} columns={columns} tableLayout="auto" />
+      <EuiBasicTable items={locks} columns={columns} tableLayout="auto" rowHeader="id" />
 
       {showWizard && (
         <StreamLockWizard

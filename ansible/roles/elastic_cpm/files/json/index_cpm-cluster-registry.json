@@ -33,12 +33,6 @@
       "node_count": {
         "type": "integer"
       },
-      "shard_max_threshold": {
-        "type": "integer"
-      },
-      "write_queue_threshold": {
-        "type": "long"
-      },
       "dc": {
         "type": "keyword"
       }

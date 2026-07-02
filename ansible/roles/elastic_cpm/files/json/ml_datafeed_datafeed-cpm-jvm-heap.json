@@ -41,7 +41,7 @@
         "cluster_id": {
           "terms": {
             "field": "elasticsearch.cluster.id",
-            "size": 10
+            "size": 32
           },
           "aggregations": {
             "heap_pct": {

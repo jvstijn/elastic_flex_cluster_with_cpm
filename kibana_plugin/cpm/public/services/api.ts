@@ -15,9 +15,9 @@ export function createCpmApi(http: HttpSetup) {
       return res.clusters;
     },
 
-    async setClusterActive(clusterId: string, active: boolean, doc: ClusterRegistryDoc) {
+    async setClusterActive(clusterId: string, active: boolean) {
       return http.put(`/api/cpm/clusters/${encodeURIComponent(clusterId)}`, {
-        body: JSON.stringify({ ...doc, active }),
+        body: JSON.stringify({ active }),
       });
     },
 
@@ -29,6 +29,9 @@ export function createCpmApi(http: HttpSetup) {
       return http.put('/api/cpm/scoring', {
         body: JSON.stringify({
           weights: config.weights,
+          write_queue_threshold: config.write_queue_threshold,
+          shard_max_threshold: config.shard_max_threshold,
+          kafka_group_id: config.kafka_group_id,
           alert_threshold: config.alert_threshold,
           forecast_horizon_hours: config.forecast_horizon_hours,
         }),

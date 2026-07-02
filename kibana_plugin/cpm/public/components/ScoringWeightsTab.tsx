@@ -4,6 +4,7 @@ import {
   EuiButton,
   EuiCallOut,
   EuiFieldNumber,
+  EuiFieldText,
   EuiForm,
   EuiFormRow,
   EuiLoadingSpinner,
@@ -31,6 +32,9 @@ interface Props {
 const DEFAULT_WEIGHTS: ScoringWeightsConfig = {
   config_type: 'scoring_weights',
   weights: { disk: 0.5, jvm: 0.25, shard: 0.05, load: 0.2 },
+  write_queue_threshold: 200,
+  shard_max_threshold: 1000,
+  kafka_group_id: 'cpm-ingest',
   alert_threshold: 80,
   forecast_horizon_hours: 24,
 };
@@ -59,10 +63,11 @@ export function ScoringWeightsTab({ api, notifications }: Props) {
   }, [load]);
 
   const weightSum = WEIGHT_KEYS.reduce((sum, k) => sum + (config.weights[k] ?? 0), 0);
+  const weightsValid = Math.abs(weightSum - 1) <= 0.01;
 
   const save = async () => {
-    if (Math.abs(weightSum - 1) > 0.01) {
-      notifications.toasts.addWarning('Weights should sum to 1.0 (current: ' + weightSum.toFixed(2) + ')');
+    if (!weightsValid) {
+      return;
     }
     setSaving(true);
     try {
@@ -91,7 +96,8 @@ export function ScoringWeightsTab({ api, notifications }: Props) {
       )}
 
       <EuiText size="s" color="subdued">
-        Document <code>cpm-routing-config/_global</code> — used by <code>cpm-scoring</code> watcher.
+        Document <code>cpm-routing-config/_global</code> — used by <code>cpm-scoring</code> and{' '}
+        <code>cpm-pipeline-manager</code> watchers.
       </EuiText>
       <EuiSpacer size="l" />
 
@@ -99,6 +105,14 @@ export function ScoringWeightsTab({ api, notifications }: Props) {
         <EuiTitle size="xs">
           <h3>Forecast weights (sum: {weightSum.toFixed(2)})</h3>
         </EuiTitle>
+        {!weightsValid && (
+          <>
+            <EuiSpacer size="s" />
+            <EuiText size="s" color="danger">
+              Weights must sum to 1.0 before saving.
+            </EuiText>
+          </>
+        )}
         <EuiSpacer size="m" />
 
         {WEIGHT_KEYS.map((key) => (
@@ -119,6 +133,50 @@ export function ScoringWeightsTab({ api, notifications }: Props) {
             />
           </EuiFormRow>
         ))}
+
+        <EuiFormRow
+          label="Write queue threshold"
+          helpText="Forecasted write queue depth at which load_score reaches 100%"
+        >
+          <EuiFieldNumber
+            value={config.write_queue_threshold}
+            min={1}
+            onChange={(e) =>
+              setConfig((prev) => ({
+                ...prev,
+                write_queue_threshold: Number(e.target.value),
+              }))
+            }
+          />
+        </EuiFormRow>
+
+        <EuiFormRow
+          label="Shard max threshold"
+          helpText="Forecasted shard count at which shard_score reaches 100%"
+        >
+          <EuiFieldNumber
+            value={config.shard_max_threshold}
+            min={1}
+            onChange={(e) =>
+              setConfig((prev) => ({
+                ...prev,
+                shard_max_threshold: Number(e.target.value),
+              }))
+            }
+          />
+        </EuiFormRow>
+
+        <EuiFormRow
+          label="Kafka consumer group id"
+          helpText="Shared group_id for all CPM Logstash pipelines (avoids duplicate consumption on migration)"
+        >
+          <EuiFieldText
+            value={config.kafka_group_id}
+            onChange={(e) =>
+              setConfig((prev) => ({ ...prev, kafka_group_id: e.target.value }))
+            }
+          />
+        </EuiFormRow>
 
         <EuiSpacer size="l" />
         <EuiFormRow label="Alert threshold (%)" helpText="Clusters scoring above this trigger alerts">
@@ -147,7 +205,7 @@ export function ScoringWeightsTab({ api, notifications }: Props) {
         </EuiFormRow>
 
         <EuiSpacer size="m" />
-        <EuiButton fill onClick={save} isLoading={saving}>
+        <EuiButton fill onClick={save} isLoading={saving} disabled={!weightsValid}>
           Save weights
         </EuiButton>
       </EuiForm>

@@ -1,6 +1,6 @@
 {
   "id": "cpm",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "kibanaVersion": "8.19.16",
   "owner": {
     "name": "Elastic Flex CPM",
@@ -11,5 +11,5 @@
   "ui": true,
   "requiredPlugins": ["management"],
   "optionalPlugins": [],
-  "requiredBundles": ["kibanaReact"]
+  "requiredBundles": []
 }

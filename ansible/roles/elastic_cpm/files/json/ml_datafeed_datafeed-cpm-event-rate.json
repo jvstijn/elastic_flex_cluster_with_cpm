@@ -41,7 +41,7 @@
         "index_name": {
           "terms": {
             "field": "elasticsearch.index.name",
-            "size": 1000
+            "size": 16384
           },
           "aggregations": {
             "index_total": {

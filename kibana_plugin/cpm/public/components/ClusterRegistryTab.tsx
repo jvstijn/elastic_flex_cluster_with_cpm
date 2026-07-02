@@ -48,7 +48,7 @@ export function ClusterRegistryTab({ api, notifications }: Props) {
   const toggleActive = async (row: ClusterRow, active: boolean) => {
     setSavingId(row.id);
     try {
-      await api.setClusterActive(row.id, active, row);
+      await api.setClusterActive(row.id, active);
       setClusters((prev) =>
         prev.map((c) => (c.id === row.id ? { ...c, active } : c))
       );
@@ -87,11 +87,11 @@ export function ClusterRegistryTab({ api, notifications }: Props) {
       name: 'Enabled',
       render: (active: boolean, row: ClusterRow) => (
         <EuiSwitch
-          label=""
+          showLabel={false}
           checked={active !== false}
           disabled={savingId === row.id}
           onChange={(e) => toggleActive(row, e.target.checked)}
-          aria-label={`Toggle ${row.cluster_name}`}
+          aria-label={`Toggle ${row.cluster_name ?? row.cluster_id}`}
         />
       ),
     },

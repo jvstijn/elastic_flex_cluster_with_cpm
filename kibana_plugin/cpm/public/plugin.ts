@@ -8,9 +8,8 @@ export class CpmPlugin implements Plugin {
       title: 'Cluster Pipeline Manager',
       order: 50,
       async mount(params) {
-        const { renderManagementApp } = await import('./application');
-        const [coreStart] = await core.getStartServices();
-        return renderManagementApp(coreStart, params);
+        const { mountManagementSection } = await import('./application');
+        return mountManagementSection(core, params);
       },
     });
   }

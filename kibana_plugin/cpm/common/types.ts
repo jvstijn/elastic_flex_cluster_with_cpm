@@ -15,6 +15,9 @@ export interface ClusterRegistryDoc {
 export interface ScoringWeightsConfig {
   config_type: 'scoring_weights';
   weights: Record<WeightKey, number>;
+  write_queue_threshold: number;
+  shard_max_threshold: number;
+  kafka_group_id: string;
   alert_threshold: number;
   forecast_horizon_hours: number;
   updated_at?: string;

@@ -74,7 +74,7 @@ export ELASTIC_PASSWORD=...   # or copy docker/reference/.env
 ansible-playbook connectivity_test.yml
 ```
 
-Tests: ES health/license/monitoring/ML/Watcher/Transform APIs, Kibana `/api/status`, `/api/spaces/space`, `/api/saved_objects/_find`, and remote `cluster05`.
+Tests: ES health/license/monitoring/ML/Watcher/Transform APIs, **nginx hostname → cluster_name routing**, Kibana `/api/status`, `/api/spaces/space`, `/api/saved_objects/_find`, and remote `cluster05`.
 
 Kibana API is exposed through nginx on `cpm.kaposi.net` (all paths proxy to Kibana `:5601`); no extra nginx vhost is required.
 
@@ -102,7 +102,7 @@ ansible-playbook bootstrap.yml
 ```bash
 ansible-playbook site.yml --tags probe      # monitoring field detection only
 ansible-playbook site.yml --tags indices    # config indices
-ansible-playbook site.yml --tags ml         # ML jobs + datafeeds
+ansible-playbook site.yml --tags ml         # ML jobs + datafeeds (open jobs, start datafeeds continuously)
 ansible-playbook site.yml --tags transform  # ingest pipeline + transform
 ansible-playbook site.yml --tags watchers   # API key + 6 watchers
 ansible-playbook site.yml --tags seed       # templates + routing _global
@@ -122,6 +122,27 @@ ansible-playbook site.yml --tags clean -e cpm_clean_indices=true  # destructive
 | `cpm_env_file` | `docker/reference/.env` | Credentials source |
 | `webhook_host` | `es-central-01` | Internal watcher callback host |
 | `cpm_cluster_registry` | 16 clusters | `ingest_hosts` / `dc` per cluster |
+| `cpm_datafeed_start` | `""` (auto `now-2d`) | Backfill start when starting a stopped datafeed |
+
+## ML jobs — continuous (real-time) operation
+
+CPM expects all five ML jobs to stay **opened** with datafeeds **started** indefinitely (Kibana: “continuous” / real-time). That is what `_open` + `POST _ml/datafeeds/<id>/_start` with only a `start` timestamp (no `end`) does.
+
+Ansible handles this in `roles/elastic_cpm/tasks/ml.yml` when you run:
+
+```bash
+ansible-playbook site.yml --tags ml
+```
+
+On each run it will:
+
+1. Create jobs/datafeeds if missing (or recreate when `cpm_ml_reinstall=true`)
+2. **Open** any closed jobs
+3. **Start** any stopped datafeeds from `cpm_datafeed_start` (default: 2 days ago)
+
+Already-running datafeeds are left alone. After an Elasticsearch restart or a failed job, re-run `--tags ml` instead of using the Kibana UI.
+
+`cpm_install.py` does the same (open + start); prefer Ansible for kaposi so ML stays in sync with the role JSON artifacts.
 
 ## Regenerate JSON artifacts from `cpm_configs.json`
 
