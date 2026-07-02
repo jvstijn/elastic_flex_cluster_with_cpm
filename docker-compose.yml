@@ -269,6 +269,12 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
     mem_limit: 1073741824
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     volumes:
       - kafka1-data:/var/lib/kafka/data
     networks:
@@ -294,6 +300,12 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
     mem_limit: 1073741824
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     volumes:
       - kafka2-data:/var/lib/kafka/data
     networks:
@@ -319,6 +331,12 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
     mem_limit: 1073741824
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     volumes:
       - kafka3-data:/var/lib/kafka/data
     networks:
@@ -328,9 +346,12 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     depends_on:
-      - kafka
-      - kafka2
-      - kafka3
+      kafka:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
     ports:
       - "${KAFKA_UI_PORT}:8080"
     environment:
@@ -344,7 +365,11 @@ services:
   logstash-beats:
     depends_on:
       kafka:
-        condition: service_started
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
       es-central:
         condition: service_healthy
     image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
@@ -374,7 +399,11 @@ services:
       es-central:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
       init:
         condition: service_completed_successfully
     image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
@@ -397,7 +426,11 @@ services:
       es-remote-a:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
       init:
         condition: service_completed_successfully
     image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
@@ -420,7 +453,11 @@ services:
       es-remote-b:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
       init:
         condition: service_completed_successfully
     image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
@@ -442,7 +479,11 @@ services:
   logstash-router:
     depends_on:
       kafka:
-        condition: service_started
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
       es-central:
         condition: service_healthy
     image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
