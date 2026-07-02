@@ -254,6 +254,7 @@ services:
       - "${KAFKA_PORT}:9092"
     environment:
       CLUSTER_ID: "${KAFKA_CLUSTER_ID}"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka2:9093,3@kafka3:9093
@@ -285,6 +286,7 @@ services:
     hostname: kafka2
     environment:
       CLUSTER_ID: "${KAFKA_CLUSTER_ID}"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_NODE_ID: 2
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka2:9093,3@kafka3:9093
@@ -316,6 +318,7 @@ services:
     hostname: kafka3
     environment:
       CLUSTER_ID: "${KAFKA_CLUSTER_ID}"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_NODE_ID: 3
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka2:9093,3@kafka3:9093
