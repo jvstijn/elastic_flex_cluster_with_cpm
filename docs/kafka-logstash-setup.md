@@ -22,6 +22,25 @@ Verder gewijzigd:
 - Kafka-volumes: `kafka1-data`, `kafka2-data`, `kafka3-data` (de oude `kafka-data`
   vervalt; single→3-broker vereist verse volumes met de gedeelde cluster-id).
 
+## Opstartvolgorde, persistentie & geheugen
+
+- **Opstartvolgorde (healthchecks).** De 3 brokers hebben een TCP-healthcheck
+  (`bash /dev/tcp/localhost/9092`); `kafka-ui` en alle Logstash-services hangen
+  aan `kafka`/`kafka2`/`kafka3` met `condition: service_healthy` (niet
+  `service_started`). Zo starten de clients pas als het cluster echt bereikbaar
+  is — geen "connection refused" meer in het ~30s quorum-venster.
+- **Persistentie.** `KAFKA_LOG_DIRS: /var/lib/kafka/data` op alle 3 brokers.
+  Zonder deze setting schrijft de apache/kafka-image naar het ephemeral
+  `/tmp/kafka-logs` en gaat álle topic-data verloren bij een container-recreate.
+  Met deze setting landt de data op de `kafka{1,2,3}-data`-volumes en blijft
+  behouden.
+- **Geheugen.** Footprint ~14,6 GB (es-central 2 GB, es-remote-a/b 1 GB, kibana
+  1 GB, 3× kafka 768 MB, kafka-ui 512 MB, 5× logstash 1 GB, 3× metricbeat
+  300 MB). Kafka-heaps 384 MB, Logstash-heaps 256 MB. Pas aan bij een kleinere
+  Docker-VM.
+- **logstash-beats.** Gebruikt `api.http.host` (in 9.4 is `http.host` verwijderd;
+  de oude waarde liet de container crashen).
+
 ## In gebruik nemen
 
 ```bash
@@ -129,6 +148,6 @@ en 4 gekozen topics elk ~203.000.
    - `ingest_hosts` → resolvbare ES-URL per cluster (bijv. `https://es-central:9200`);
    - per-cluster ingest-API-keys aanmaken en als `ES_API_KEY_<UUID>` aan de juiste
      Logstash-container meegeven.
-4. **Geheugen.** 3 Kafka-brokers (heap 512m) + kafka-ui + 3 Logstash (heap 256m)
-   bovenop de ES-stack. Pas `KAFKA_HEAP_OPTS`/`mem_limit` aan bij krapte.
-```
+4. **Geheugen.** Zie de sectie "Opstartvolgorde, persistentie & geheugen"
+   hierboven: totale footprint ~14,6 GB. Pas `KAFKA_HEAP_OPTS`/`mem_limit` aan
+   bij een kleinere Docker-VM.
