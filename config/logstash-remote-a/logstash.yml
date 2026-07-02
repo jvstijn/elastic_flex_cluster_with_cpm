@@ -1,0 +1,19 @@
+api.http.host: "0.0.0.0"
+
+xpack.monitoring.enabled: true
+xpack.monitoring.elasticsearch.hosts: ["https://es-central:9200"]
+xpack.monitoring.elasticsearch.username: "elastic"
+xpack.monitoring.elasticsearch.password: "${ELASTIC_PASSWORD}"
+xpack.monitoring.elasticsearch.ssl.verification_mode: none
+
+# Central pipeline management lives on es-central; this Logstash only runs the
+# pipelines for the remote-a cluster (pipeline ids "remote-a_cpm-*", prefix from
+# node.attr.dc=remote-a via cpm-cluster-registry).
+xpack.management.enabled: true
+xpack.management.elasticsearch.hosts: ["https://es-central:9200"]
+xpack.management.elasticsearch.username: "elastic"
+xpack.management.elasticsearch.password: "${ELASTIC_PASSWORD}"
+xpack.management.elasticsearch.ssl.verification_mode: none
+xpack.management.pipeline.id: ["remote-a_*"]
+
+path.logs: /usr/share/logstash/logs

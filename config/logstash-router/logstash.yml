@@ -1,9 +1,12 @@
 api.http.host: "0.0.0.0"
+
 xpack.monitoring.enabled: true
 xpack.monitoring.elasticsearch.hosts: ["https://es-central:9200"]
 xpack.monitoring.elasticsearch.username: "elastic"
 xpack.monitoring.elasticsearch.password: "${ELASTIC_PASSWORD}"
 xpack.monitoring.elasticsearch.ssl.verification_mode: none
 
+# Standalone pipeline (not CPM-managed): reads test-dataset from Kafka and
+# routes each event to <type>-<dataset>-<namespace>, or to dead-letter-queue.
 path.config: /usr/share/logstash/pipeline
 path.logs: /usr/share/logstash/logs
