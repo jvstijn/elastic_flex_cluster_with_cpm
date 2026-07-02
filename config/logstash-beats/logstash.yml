@@ -1,4 +1,4 @@
-http.host: "0.0.0.0"
+api.http.host: "0.0.0.0"
 xpack.monitoring.enabled: true
 xpack.monitoring.elasticsearch.hosts: ["https://es-central:9200"]
 xpack.monitoring.elasticsearch.username: "elastic"

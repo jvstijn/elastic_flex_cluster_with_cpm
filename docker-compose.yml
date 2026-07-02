@@ -89,7 +89,7 @@ services:
       - discovery.type=single-node
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - bootstrap.memory_lock=true
-      - ES_JAVA_OPTS=-Xms768m -Xmx768m
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=true
       - xpack.security.http.ssl.key=certs/es-remote-a/es-remote-a.key
@@ -108,7 +108,7 @@ services:
       - xpack.security.remote_cluster_server.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.remote_cluster_server.ssl.verification_mode=none
       - xpack.license.self_generated.type=${LICENSE}
-    mem_limit: 2147483648
+    mem_limit: 1073741824
     ulimits:
       memlock:
         soft: -1
@@ -267,8 +267,8 @@ services:
       KAFKA_DEFAULT_REPLICATION_FACTOR: 3
       KAFKA_MIN_INSYNC_REPLICAS: 2
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
-    mem_limit: 1073741824
+      KAFKA_HEAP_OPTS: "-Xmx384m -Xms384m"
+    mem_limit: 805306368
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092"]
       interval: 10s
@@ -298,8 +298,8 @@ services:
       KAFKA_DEFAULT_REPLICATION_FACTOR: 3
       KAFKA_MIN_INSYNC_REPLICAS: 2
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
-    mem_limit: 1073741824
+      KAFKA_HEAP_OPTS: "-Xmx384m -Xms384m"
+    mem_limit: 805306368
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092"]
       interval: 10s
@@ -329,8 +329,8 @@ services:
       KAFKA_DEFAULT_REPLICATION_FACTOR: 3
       KAFKA_MIN_INSYNC_REPLICAS: 2
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
-    mem_limit: 1073741824
+      KAFKA_HEAP_OPTS: "-Xmx384m -Xms384m"
+    mem_limit: 805306368
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092"]
       interval: 10s
@@ -514,6 +514,7 @@ services:
     env_file: .env
     environment:
       - MONITORING_PASSWORD=${MONITORING_PASSWORD}
+    mem_limit: 314572800
     command: ["metricbeat", "-e", "--strict.perms=false"]
     networks:
       - dod-elastic
@@ -532,6 +533,7 @@ services:
     env_file: .env
     environment:
       - MONITORING_PASSWORD=${MONITORING_PASSWORD}
+    mem_limit: 314572800
     command: ["metricbeat", "-e", "--strict.perms=false"]
     networks:
       - dod-elastic
@@ -550,6 +552,7 @@ services:
     env_file: .env
     environment:
       - MONITORING_PASSWORD=${MONITORING_PASSWORD}
+    mem_limit: 314572800
     command: ["metricbeat", "-e", "--strict.perms=false"]
     networks:
       - dod-elastic
