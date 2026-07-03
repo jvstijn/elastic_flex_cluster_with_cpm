@@ -70,6 +70,7 @@ cpm_watchers:
   - { id: cpm-routing-advisor, file: watcher_cpm-routing-advisor.json.j2 }
   - { id: cpm-state-manager, file: watcher_cpm-state-manager.json.j2 }
   - { id: cpm-pipeline-manager, file: watcher_cpm-pipeline-manager.json.j2 }
+  - { id: cpm-stream-coverage, file: watcher_cpm-stream-coverage.json.j2 }
 
 cpm_pipeline_templates:
   - { id: catchall, file: json/cpm-pipeline-template-catchall.json }

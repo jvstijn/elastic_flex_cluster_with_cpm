@@ -14,6 +14,7 @@ export const WATCHER_CHAIN = [
   'cpm-routing-advisor',
   'cpm-state-manager',
   'cpm-pipeline-manager',
+  'cpm-stream-coverage',
 ] as const;
 
 export type WatcherId = (typeof WATCHER_CHAIN)[number] | typeof WATCHER_FORECAST;

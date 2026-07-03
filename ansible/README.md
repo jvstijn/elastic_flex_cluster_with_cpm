@@ -104,7 +104,7 @@ ansible-playbook site.yml --tags probe      # monitoring field detection only
 ansible-playbook site.yml --tags indices    # config indices
 ansible-playbook site.yml --tags ml         # ML jobs + datafeeds (open jobs, start datafeeds continuously)
 ansible-playbook site.yml --tags transform  # ingest pipeline + transform
-ansible-playbook site.yml --tags watchers   # API key + 6 watchers
+ansible-playbook site.yml --tags watchers   # API key + 7 watchers
 ansible-playbook site.yml --tags seed       # templates + routing _global
 ansible-playbook site.yml --tags registry   # patch ingest_hosts / dc
 ansible-playbook site.yml --tags dashboard  # Kibana saved objects (4 dashboards)
@@ -143,6 +143,43 @@ On each run it will:
 Already-running datafeeds are left alone. After an Elasticsearch restart or a failed job, re-run `--tags ml` instead of using the Kibana UI.
 
 `cpm_install.py` does the same (open + start); prefer Ansible for kaposi so ML stays in sync with the role JSON artifacts.
+
+## Watchers
+
+| Watcher | Schedule (UTC) | Purpose |
+|---------|----------------|---------|
+| `cpm-registry-sync` | daily | Sync `cpm-cluster-registry` from Stack Monitoring |
+| `cpm-forecast-trigger` | daily | Refresh ML forecasts (optional before scoring) |
+| `cpm-scoring` | daily | Write cluster scores |
+| `cpm-routing-advisor` | daily | Routing suggestions |
+| `cpm-state-manager` | daily | Desired state → `cpm-pipeline-state` |
+| `cpm-pipeline-manager` | `0 20 0 * * ?` | Push Logstash pipelines |
+| `cpm-stream-coverage` | `0 25 0 * * ?` | Stream vs pipeline coverage → `cpm-stream-coverage` |
+
+**`cpm-stream-coverage`** runs five minutes after pipeline-manager. It:
+
+1. Reads Stack Monitoring index stats (24h window) per cluster and backing index
+2. Treats a stream as active when `index_total` increased over the window
+3. Maps each backing index to a data-stream name and Kafka topic (`logs-dataset-ns`, or `filebeat`)
+4. Loads topic lists from `GET /_logstash/pipeline` and optional `cpm-pipeline-state`
+5. Clears `cpm-stream-coverage`, then bulk-indexes one document per `{cluster_id}|{stream_key}`
+
+Dashboard panels on **Platform Overview** (`cpm-search-stream-coverage`, managed/unmanaged metrics) read this index. They stay empty until this watcher runs (bootstrap executes it after pipeline-manager). For ad-hoc checks on a single cluster, use `scripts/check_index_pipeline_coverage.py`.
+
+Manual run:
+
+```bash
+curl -u elastic -X POST "$ES/_watcher/watch/cpm-stream-coverage/_execute" \
+  -H 'Content-Type: application/json' -d '{"record_execution":true}'
+```
+
+**Kibana plugin:** Changes to the Run CPM chain UI (`kibana_plugin/cpm/`) are not deployed by `--tags watchers`. After plugin source changes, rebuild and reinstall on Kibana:
+
+```bash
+chmod +x scripts/build_kibana_cpm_plugin.sh
+./scripts/build_kibana_cpm_plugin.sh
+# install kibana_plugin/build/cpm-8.19.16.zip on cpm.kaposi.net (see kibana_plugin/README.md)
+```
 
 ## Regenerate JSON artifacts from `cpm_configs.json`
 

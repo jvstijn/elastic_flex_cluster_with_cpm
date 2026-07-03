@@ -54,6 +54,10 @@ const STEP_META: Record<string, { label: string; description: string }> = {
     label: 'Pipelines',
     description: 'Push Logstash pipelines to remote clusters',
   },
+  'cpm-stream-coverage': {
+    label: 'Coverage',
+    description: 'Index active streams vs Logstash pipeline topics into cpm-stream-coverage',
+  },
 };
 
 const BALL_COLORS: Record<StepStatus, string> = {
@@ -206,9 +210,11 @@ export function RunCpmTab({ api, notifications }: Props) {
 
       <EuiSpacer size="l" />
       <EuiCallOut title="After changing clusters or locks" size="s">
-        Run at minimum <EuiCode>cpm-state-manager</EuiCode> then{' '}
-        <EuiCode>cpm-pipeline-manager</EuiCode>. After registry or weight changes, run the full
-        chain from <EuiCode>cpm-registry-sync</EuiCode> or <EuiCode>cpm-scoring</EuiCode> onward.
+        Run at minimum <EuiCode>cpm-state-manager</EuiCode>, then{' '}
+        <EuiCode>cpm-pipeline-manager</EuiCode>, then <EuiCode>cpm-stream-coverage</EuiCode>{' '}
+        so Platform Overview coverage panels stay current. After registry or weight changes, run
+        the full chain from <EuiCode>cpm-registry-sync</EuiCode> or <EuiCode>cpm-scoring</EuiCode>{' '}
+        onward.
       </EuiCallOut>
 
       {showResults && results && (

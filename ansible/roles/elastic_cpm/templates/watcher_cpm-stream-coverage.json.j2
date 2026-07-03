@@ -1,0 +1,252 @@
+{% raw %}
+{
+  "trigger": {
+    "schedule": {
+      "cron": "0 25 0 * * ?"
+    }
+  },
+  "input": {
+    "chain": {
+      "inputs": [
+        {
+          "monitoring_streams": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  "monitoring:.monitoring-es-8-*"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 0,
+                  "query": {
+                    "bool": {
+                      "filter": [
+                        {
+                          "match_phrase": {
+                            "event.dataset": "elasticsearch.index"
+                          }
+                        },
+                        {
+                          "range": {
+                            "@timestamp": {
+                              "gte": "now-24h"
+                            }
+                          }
+                        },
+                        {
+                          "bool": {
+                            "should": [
+                              {
+                                "wildcard": {
+                                  "elasticsearch.index.name": ".ds-logs-*"
+                                }
+                              },
+                              {
+                                "wildcard": {
+                                  "elasticsearch.index.name": ".ds-metrics-*"
+                                }
+                              },
+                              {
+                                "wildcard": {
+                                  "elasticsearch.index.name": ".ds-traces-*"
+                                }
+                              },
+                              {
+                                "wildcard": {
+                                  "elasticsearch.index.name": ".ds-filebeat-*"
+                                }
+                              },
+                              {
+                                "wildcard": {
+                                  "elasticsearch.index.name": "filebeat-*"
+                                }
+                              }
+                            ],
+                            "minimum_should_match": 1
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "aggs": {
+                    "by_cluster": {
+                      "terms": {
+                        "field": "elasticsearch.cluster.id",
+                        "size": 32
+                      },
+                      "aggs": {
+                        "by_index": {
+                          "terms": {
+                            "field": "elasticsearch.index.name",
+                            "size": 2048
+                          },
+                          "aggs": {
+                            "over_time": {
+                              "date_histogram": {
+                                "field": "@timestamp",
+                                "fixed_interval": "1h"
+                              },
+                              "aggs": {
+                                "max_total": {
+                                  "max": {
+                                    "field": "elasticsearch.index.total.indexing.index_total"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "registry": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  "cpm-cluster-registry"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 32,
+                  "query": {
+                    "match_all": {}
+                  },
+                  "_source": [
+                    "cluster_id",
+                    "cluster_uuid",
+                    "cluster_name",
+                    "active"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "existing_pipelines": {
+            "http": {
+              "request": {
+                "scheme": "https",
+{% endraw %}
+                "host": "{{ webhook_host }}",
+{% raw %}
+                "port": 9200,
+                "method": "get",
+                "path": "/_logstash/pipeline",
+                "headers": {
+{% endraw %}
+                  "Authorization": "Apikey {{ watcher_api_key.encoded }}"
+{% raw %}
+                }
+              }
+            }
+          }
+        },
+        {
+          "pipeline_state": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  "cpm-pipeline-state"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 16384,
+                  "_source": [
+                    "cluster_id",
+                    "topic",
+                    "pipeline_id"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "stream_exclusions": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  "cpm-stream-exclusions"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 500,
+                  "_source": [
+                    "topic_pattern"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "condition": {
+    "always": {}
+  },
+  "transform": {
+    "script": {
+      "source": "// ====== CPM Stream Coverage ======\n// Snapshot active data streams (monitoring, 24h) vs Logstash pipeline topics.\n\nString ts = ctx.execution_time.toString();\n\nList excludePatterns = new ArrayList();\nif (ctx.payload.stream_exclusions != null && ctx.payload.stream_exclusions.hits != null) {\n  for (def exHit : ctx.payload.stream_exclusions.hits.hits) {\n    if (exHit._source.topic_pattern != null) {\n      excludePatterns.add((String)exHit._source.topic_pattern);\n    }\n  }\n}\n\nMap uuidRegistryMap = new HashMap();\nfor (def hit : ctx.payload.registry.hits.hits) {\n  Map src = hit._source;\n  if (src.cluster_uuid == null) continue;\n  boolean active = src.active == null || (boolean)src.active;\n  if (!active) continue;\n  Map m = new HashMap();\n  m.put('cluster_id', (String)src.cluster_id);\n  m.put('cluster_name', src.cluster_name != null ? (String)src.cluster_name : (String)src.cluster_id);\n  uuidRegistryMap.put((String)src.cluster_uuid, m);\n}\n\nMap topicToPipelines = new HashMap();\nif (ctx.payload.existing_pipelines != null && ctx.payload.existing_pipelines instanceof Map) {\n  for (def pe : ctx.payload.existing_pipelines.entrySet()) {\n    String pid = (String)pe.getKey();\n    def body = pe.getValue();\n    String config = '';\n    if (body instanceof Map && body.pipeline != null) {\n      config = (String)body.pipeline;\n    } else if (body instanceof String) {\n      config = (String)body;\n    }\n    if (config == null || config.isEmpty()) continue;\n    int searchFrom = 0;\n    while (true) {\n      int topicsIdx = config.indexOf('topics =>', searchFrom);\n      if (topicsIdx < 0) break;\n      int lb = config.indexOf('[', topicsIdx);\n      if (lb < 0) break;\n      int rb = config.indexOf(']', lb);\n      if (rb < 0) break;\n      String inner = config.substring(lb + 1, rb);\n      int pos = 0;\n      while (pos <= inner.length()) {\n        int comma = inner.indexOf(',', pos);\n        String tok;\n        if (comma < 0) {\n          tok = inner.substring(pos).trim();\n          pos = inner.length() + 1;\n        } else {\n          tok = inner.substring(pos, comma).trim();\n          pos = comma + 1;\n        }\n        if (tok.length() >= 2) {\n          int q = (int)tok.charAt(0);\n          if (q == 34 && tok.charAt(tok.length() - 1) == (char)34) tok = tok.substring(1, tok.length() - 1);\n          else if (q == 39 && tok.charAt(tok.length() - 1) == (char)39) tok = tok.substring(1, tok.length() - 1);\n        }\n        if (!tok.isEmpty() && !tok.startsWith('__')) {\n          if (!topicToPipelines.containsKey(tok)) topicToPipelines.put(tok, new ArrayList());\n          List pl = (List)topicToPipelines.get(tok);\n          if (!pl.contains(pid)) pl.add(pid);\n        }\n        if (comma < 0) break;\n      }\n      searchFrom = rb + 1;\n    }\n  }\n}\n\nMap stateByClusterTopic = new HashMap();\nif (ctx.payload.pipeline_state != null && ctx.payload.pipeline_state.hits != null) {\n  for (def hit : ctx.payload.pipeline_state.hits.hits) {\n    Map src = hit._source;\n    if (src.cluster_id == null || src.topic == null) continue;\n    String key = (String)src.cluster_id + '|' + (String)src.topic;\n    if (src.pipeline_id != null) stateByClusterTopic.put(key, (String)src.pipeline_id);\n  }\n}\n\nList entries = new ArrayList();\nSet seenIds = new HashSet();\n\ndef rateBuckets = ctx.payload.monitoring_streams.aggregations.by_cluster.buckets;\nfor (def cb : rateBuckets) {\n  String uuid = (String)cb.key;\n  Map cl = (Map)uuidRegistryMap.get(uuid);\n  if (cl == null) continue;\n  String clusterId = (String)cl.get('cluster_id');\n  String clusterName = (String)cl.get('cluster_name');\n\n  for (def ib : cb.by_index.buckets) {\n    String iname = (String)ib.key;\n\n    boolean active = false;\n    def tb = ib.over_time.buckets;\n    if (tb != null && tb.size() > 0) {\n      if (tb.size() == 1) {\n        def v0 = tb[0].max_total.value;\n        active = v0 != null && ((Number)v0).longValue() > 0;\n      } else {\n        def v0 = tb[0].max_total.value;\n        def v1 = tb[tb.size() - 1].max_total.value;\n        active = v0 != null && v1 != null && ((Number)v1).longValue() > ((Number)v0).longValue();\n      }\n    }\n    if (!active) continue;\n\n    String indexName;\n    String streamType;\n    String dataset;\n    String ns;\n    String topic;\n    String streamKey;\n\n    if (iname.startsWith('filebeat-') || iname.startsWith('.ds-filebeat-')) {\n      indexName = iname.startsWith('.ds-') ? iname.substring(4) : iname;\n      streamType = 'filebeat';\n      dataset = 'filebeat';\n      ns = 'default';\n      topic = 'filebeat';\n      streamKey = 'filebeat|filebeat|default';\n    } else {\n      if (!iname.startsWith('.ds-')) continue;\n      String afterDs = iname.substring(4);\n      if (!afterDs.startsWith('logs-') && !afterDs.startsWith('metrics-') && !afterDs.startsWith('traces-')) continue;\n      int last = afterDs.lastIndexOf('-');\n      if (last <= 0) continue;\n      afterDs = afterDs.substring(0, last);\n      last = afterDs.lastIndexOf('-');\n      if (last <= 0) continue;\n      indexName = afterDs.substring(0, last);\n      int fd = indexName.indexOf('-');\n      if (fd <= 0) continue;\n      streamType = indexName.substring(0, fd);\n      if (!streamType.equals('logs') && !streamType.equals('metrics') && !streamType.equals('traces')) continue;\n      String rest = indexName.substring(fd + 1);\n      int nd = rest.lastIndexOf('-');\n      if (nd <= 0) continue;\n      dataset = rest.substring(0, nd);\n      ns = rest.substring(nd + 1);\n      topic = streamType + '-' + dataset + '-' + ns;\n      streamKey = streamType + '|' + dataset + '|' + ns;\n    }\n\n    boolean staleSimulator = false;\n    if (!topic.equals('filebeat') && (topic.startsWith('logs-') || topic.startsWith('metrics-') || topic.startsWith('traces-'))) {\n      int p1 = topic.indexOf('-');\n      int p2 = topic.indexOf('-', p1 + 1);\n      if (p2 > 0) {\n        String ds0 = topic.substring(p1 + 1, p2);\n        if (ds0.length() >= 3) {\n          String tail = ds0.substring(ds0.length() - 2);\n          if (tail.compareTo('01') >= 0 && tail.compareTo('15') <= 0) {\n            int p3 = topic.indexOf('-', p2 + 1);\n            if (p3 > 0 && topic.indexOf('-', p3 + 1) < 0) {\n              String env = topic.substring(p3 + 1);\n              if (env.equals('tst') || env.equals('acc') || env.equals('prd') || env.equals('dev')) {\n                staleSimulator = true;\n              }\n            }\n          }\n        }\n      }\n    }\n    boolean topicOk = topic.equals('filebeat') || ((!staleSimulator) && (topic.startsWith('logs-') || topic.startsWith('metrics-') || topic.startsWith('traces-')));\n    if (!topicOk) continue;\n\n    boolean topicExcluded = false;\n    for (int pi = 0; pi < excludePatterns.size(); pi++) {\n      String pattern = (String)excludePatterns.get(pi);\n      if (pattern.indexOf('*') < 0) {\n        if (topic.equals(pattern)) { topicExcluded = true; break; }\n      } else {\n        int star = pattern.indexOf('*');\n        String pre = pattern.substring(0, star);\n        String suf = pattern.substring(star + 1);\n        if (pre.isEmpty()) {\n          if (topic.endsWith(suf)) { topicExcluded = true; break; }\n        } else if (suf.isEmpty()) {\n          if (topic.startsWith(pre)) { topicExcluded = true; break; }\n        } else {\n          if (topic.startsWith(pre) && topic.endsWith(suf)) { topicExcluded = true; break; }\n        }\n      }\n    }\n    if (topicExcluded) continue;\n\n    String docId = clusterId + '|' + streamKey;\n    if (seenIds.contains(docId)) continue;\n    seenIds.add(docId);\n\n    List pipes = (List)topicToPipelines.get(topic);\n    boolean managed = pipes != null && pipes.size() > 0;\n    String pipelineId = '';\n    if (managed) {\n      pipelineId = (String)pipes.get(0);\n    } else {\n      String sk = clusterId + '|' + topic;\n      if (stateByClusterTopic.containsKey(sk)) pipelineId = (String)stateByClusterTopic.get(sk);\n    }\n    String status = managed ? 'managed' : 'unmanaged';\n\n    Map row = new HashMap();\n    row.put('doc_id', docId);\n    row.put('cluster_id', clusterId);\n    row.put('cluster_name', clusterName);\n    row.put('index_name', indexName);\n    row.put('data_stream_type', streamType);\n    row.put('dataset', dataset);\n    row.put('namespace', ns);\n    row.put('stream_key', streamKey);\n    row.put('topic', topic);\n    row.put('cpm_managed', managed);\n    row.put('management_status', status);\n    row.put('pipeline_id', pipelineId);\n    row.put('recorded_at', ts);\n    entries.add(row);\n  }\n}\n\nMap out = new HashMap();\nout.put('entries', entries);\nreturn out;",
+      "lang": "painless"
+    }
+  },
+  "actions": {
+    "clear_coverage_index": {
+      "webhook": {
+        "scheme": "https",
+{% endraw %}
+        "host": "{{ webhook_host }}",
+{% raw %}
+        "port": 9200,
+        "method": "post",
+        "path": "/cpm-stream-coverage/_delete_by_query?conflicts=proceed",
+        "params": {},
+        "headers": {
+{% endraw %}
+          "Authorization": "Apikey {{ watcher_api_key.encoded }}",
+{% raw %}
+          "Content-Type": "application/json"
+        },
+        "body": "{\"query\":{\"match_all\":{}}}"
+      }
+    },
+    "bulk_index_coverage": {
+      "condition": {
+        "script": {
+          "source": "return ctx.payload.entries != null && ctx.payload.entries.size() > 0",
+          "lang": "painless"
+        }
+      },
+      "webhook": {
+        "scheme": "https",
+{% endraw %}
+        "host": "{{ webhook_host }}",
+{% raw %}
+        "port": 9200,
+        "method": "post",
+        "path": "/_bulk",
+        "params": {},
+        "headers": {
+{% endraw %}
+          "Authorization": "Apikey {{ watcher_api_key.encoded }}",
+{% raw %}
+          "Content-Type": "application/x-ndjson"
+        },
+        "body": "{{#ctx.payload.entries}}{\"index\":{\"_index\":\"cpm-stream-coverage\",\"_id\":\"{{{doc_id}}}\"}}\n{\"cluster_id\":\"{{{cluster_id}}}\",\"cluster_name\":\"{{{cluster_name}}}\",\"index_name\":\"{{{index_name}}}\",\"data_stream_type\":\"{{{data_stream_type}}}\",\"dataset\":\"{{{dataset}}}\",\"namespace\":\"{{{namespace}}}\",\"stream_key\":\"{{{stream_key}}}\",\"topic\":\"{{{topic}}}\",\"cpm_managed\":{{cpm_managed}},\"management_status\":\"{{{management_status}}}\",\"pipeline_id\":\"{{{pipeline_id}}}\",\"recorded_at\":\"{{{recorded_at}}}\"}\n{{/ctx.payload.entries}}"
+      }
+    }
+  }
+}
+{% endraw %}

@@ -136,6 +136,19 @@
     status_code: [200]
   register: cpm_bootstrap_pipeline_manager
 
+- name: Execute cpm-stream-coverage watcher
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_watcher/watch/cpm-stream-coverage/_execute"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body:
+      record_execution: true
+    status_code: [200]
+
 - name: Remove bootstrap kafka-to-central pipeline
   ansible.builtin.uri:
     url: "{{ elastic_base_url }}/_logstash/pipeline/kafka-to-central"

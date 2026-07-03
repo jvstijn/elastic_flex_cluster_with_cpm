@@ -20,6 +20,9 @@ Watcher chain order (matches Ansible bootstrap):
 3. `cpm-routing-advisor`
 4. `cpm-state-manager`
 5. `cpm-pipeline-manager`
+6. `cpm-stream-coverage` — refreshes `cpm-stream-coverage` for Platform Overview dashboards
+
+After locks or pipeline changes, run at least `cpm-state-manager` → `cpm-pipeline-manager` → `cpm-stream-coverage` so coverage reflects the current Logstash topic lists.
 
 ---
 
