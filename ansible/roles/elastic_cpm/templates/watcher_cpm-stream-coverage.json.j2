@@ -211,8 +211,10 @@
 {% raw %}
         "port": 9200,
         "method": "post",
-        "path": "/cpm-stream-coverage/_delete_by_query?conflicts=proceed",
-        "params": {},
+        "path": "/cpm-stream-coverage/_delete_by_query",
+        "params": {
+          "conflicts": "proceed"
+        },
         "headers": {
 {% endraw %}
           "Authorization": "Apikey {{ watcher_api_key.encoded }}",
