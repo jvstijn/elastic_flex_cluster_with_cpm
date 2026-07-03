@@ -12,7 +12,7 @@
 kibana_scheme: http
 kibana_host: localhost
 kibana_port: "{{ lookup('ini', 'KIBANA_PORT type=properties file=' ~ playbook_dir ~ '/../.env') }}"
-kibana_base_url: "{{ kibana_scheme }}://{{ kibana_host }}:{{ kibana_port }}"
+kibana_url: "{{ kibana_scheme }}://{{ kibana_host }}:{{ kibana_port }}"
 
 # --- CPMW indices die de role aanmaakt -------------------------------------
 cpmw_indices:

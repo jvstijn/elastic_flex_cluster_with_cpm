@@ -104,7 +104,7 @@ ansible-playbook site.yml --tags clean -e cpm_clean_indices=true  # destructive
 | Variable | kaposi value | Description |
 |----------|--------------|-------------|
 | `elastic_base_url` | `https://central.kaposi.net` | Central ES API (nginx :443) |
-| `kibana_base_url` | `https://cpm.kaposi.net` | Kibana UI + API |
+| `kibana_url` | `https://cpm.kaposi.net` | Kibana UI + API |
 | `cpm_validate_certs` | `true` | Let's Encrypt TLS verification |
 | `cpm_env_file` | `docker/reference/.env` | Credentials source |
 | `webhook_host` | `es-central-01` | Internal watcher callback host |
