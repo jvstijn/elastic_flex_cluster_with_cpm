@@ -82,6 +82,36 @@ KIBANA_DIR=$HOME/.cache/kibana-9.4.3 \
 
 Do **not** commit `kibana_plugin/build/` or `.kibana-build/` (gitignored).
 
+### Step 2b — Build zip in Docker (artifact on host)
+
+No local Node/Yarn/fnm required. Output: `kibana_plugin/build/cpm-<version>.zip`.
+
+From `Jan/elastic_flex_cluster_with_cpm/`:
+
+```bash
+chmod +x scripts/build_kibana_cpm_plugin_docker.sh
+./scripts/build_kibana_cpm_plugin_docker.sh
+
+# other Kibana version
+KIBANA_VERSION=9.4.3 ./scripts/build_kibana_cpm_plugin_docker.sh
+```
+
+Manual equivalent:
+
+```bash
+cd kibana_plugin
+docker build -f Dockerfile.build -t cpm-kibana-plugin-build:8.19.16 .
+docker run --rm -v "$(pwd)/build:/output" cpm-kibana-plugin-build:8.19.16
+ls -la build/cpm-8.19.16.zip
+```
+
+First `docker build` is slow (~15–20 min); Docker layer cache speeds up rebuilds when only `cpm/` source changes.
+
+| File | Purpose |
+|------|---------|
+| `kibana_plugin/Dockerfile.build` | Clone Kibana, bootstrap, `yarn build`, copy zip to `/output` |
+| `kibana_plugin/Dockerfile` | Same build + bake plugin into `kibana-cpm:<version>` image |
+
 ### Step 3 — Build manually (optional)
 
 ```bash
@@ -213,6 +243,7 @@ kibana_plugin/
     common/
   build/               # output zips (gitignored)
   Dockerfile           # optional image with plugin pre-installed
+  Dockerfile.build     # zip-only builder (mount build/ as /output)
 ```
 
-Build script: `scripts/build_kibana_cpm_plugin.sh`
+Build scripts: `scripts/build_kibana_cpm_plugin.sh` (native), `scripts/build_kibana_cpm_plugin_docker.sh` (Docker artifact).
