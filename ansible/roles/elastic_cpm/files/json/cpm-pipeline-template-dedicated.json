@@ -1,7 +1,7 @@
 {
   "name": "dedicated",
   "description": "Per-dataset Logstash pipeline managed by CPM",
-  "kafka_bootstrap": "kafka:9092",
+  "kafka_bootstrap": "kafka:9092,kafka2:9092,kafka3:9092",
   "consumer_threads": 1,
   "pipeline_settings": {
     "pipeline.workers": 2,

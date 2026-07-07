@@ -26,6 +26,10 @@ services:
     environment:
       - node.name=es-central
       - cluster.name=central-cluster
+      # dc node-attribute -> register-sync writes it to cpm-cluster-registry ->
+      # CPM pipeline ids become "<dc>_cpm-..." so each per-cluster Logstash can
+      # filter its own pipelines via xpack.management.pipeline.id.
+      - node.attr.dc=central
       - discovery.type=single-node
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - bootstrap.memory_lock=true
@@ -81,10 +85,11 @@ services:
     environment:
       - node.name=es-remote-a
       - cluster.name=remote-a
+      - node.attr.dc=remote-a
       - discovery.type=single-node
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - bootstrap.memory_lock=true
-      - ES_JAVA_OPTS=-Xms768m -Xmx768m
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=true
       - xpack.security.http.ssl.key=certs/es-remote-a/es-remote-a.key
@@ -103,7 +108,7 @@ services:
       - xpack.security.remote_cluster_server.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.remote_cluster_server.ssl.verification_mode=none
       - xpack.license.self_generated.type=${LICENSE}
-    mem_limit: 2147483648
+    mem_limit: 1073741824
     ulimits:
       memlock:
         soft: -1
@@ -134,6 +139,7 @@ services:
     environment:
       - node.name=es-remote-b
       - cluster.name=remote-b
+      - node.attr.dc=remote-b
       - discovery.type=single-node
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - bootstrap.memory_lock=true
@@ -237,31 +243,136 @@ services:
     networks:
       - dod-elastic
 
+  # ------------------------------------------------------------------------
+  # Kafka: small 3-broker KRaft cluster (combined broker+controller roles).
+  # Bootstrap for clients: kafka:9092,kafka2:9092,kafka3:9092
+  # ------------------------------------------------------------------------
   kafka:
     image: apache/kafka:3.9.0
+    hostname: kafka
     ports:
       - "${KAFKA_PORT}:9092"
     environment:
+      CLUSTER_ID: "${KAFKA_CLUSTER_ID}"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka2:9093,3@kafka3:9093
       KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: "-Xmx384m -Xms384m"
+    mem_limit: 805306368
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     volumes:
-      - kafka-data:/var/lib/kafka/data
+      - kafka1-data:/var/lib/kafka/data
+    networks:
+      - dod-elastic
+
+  kafka2:
+    image: apache/kafka:3.9.0
+    hostname: kafka2
+    environment:
+      CLUSTER_ID: "${KAFKA_CLUSTER_ID}"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka2:9093,3@kafka3:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka2:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: "-Xmx384m -Xms384m"
+    mem_limit: 805306368
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    volumes:
+      - kafka2-data:/var/lib/kafka/data
+    networks:
+      - dod-elastic
+
+  kafka3:
+    image: apache/kafka:3.9.0
+    hostname: kafka3
+    environment:
+      CLUSTER_ID: "${KAFKA_CLUSTER_ID}"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_NODE_ID: 3
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093,2@kafka2:9093,3@kafka3:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka3:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: "-Xmx384m -Xms384m"
+    mem_limit: 805306368
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    volumes:
+      - kafka3-data:/var/lib/kafka/data
+    networks:
+      - dod-elastic
+
+  # Kafka web GUI (topics, consumer groups, messages) -> http://localhost:${KAFKA_UI_PORT}
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+    ports:
+      - "${KAFKA_UI_PORT}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: dod-kafka
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092,kafka2:9092,kafka3:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    mem_limit: 536870912
     networks:
       - dod-elastic
 
   logstash-beats:
     depends_on:
       kafka:
-        condition: service_started
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
       es-central:
         condition: service_healthy
     image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
@@ -280,22 +391,113 @@ services:
     networks:
       - dod-elastic
 
-  logstash-managed:
+  # ------------------------------------------------------------------------
+  # One CPM-managed Logstash per Elasticsearch cluster. Each pulls only its
+  # own cluster's pipelines from central pipeline management, filtered by the
+  # dc-prefix (xpack.management.pipeline.id: ["<dc>_*"]). All consume from the
+  # 3-broker Kafka cluster.
+  # ------------------------------------------------------------------------
+  logstash-central:
     depends_on:
       es-central:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
       init:
         condition: service_completed_successfully
     image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
     volumes:
       - certs:/usr/share/logstash/config/certs
-      - ./config/logstash-managed/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./config/logstash-central/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
     env_file: .env
     environment:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
       - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    mem_limit: ${MEM_LIMIT}
+    networks:
+      - dod-elastic
+
+  logstash-remote-a:
+    depends_on:
+      es-central:
+        condition: service_healthy
+      es-remote-a:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/logstash/config/certs
+      - ./config/logstash-remote-a/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    env_file: .env
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    mem_limit: ${MEM_LIMIT}
+    networks:
+      - dod-elastic
+
+  logstash-remote-b:
+    depends_on:
+      es-central:
+        condition: service_healthy
+      es-remote-b:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/logstash/config/certs
+      - ./config/logstash-remote-b/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    env_file: .env
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+    mem_limit: ${MEM_LIMIT}
+    networks:
+      - dod-elastic
+
+  # Standalone router: reads the test-dataset topic and routes each event to
+  # <data_stream.type>-<dataset>-<namespace>, or to dead-letter-queue when that
+  # target topic does not exist (or the data_stream fields are missing).
+  logstash-router:
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+      kafka3:
+        condition: service_healthy
+      es-central:
+        condition: service_healthy
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/logstash/config/certs
+      - ./config/logstash-router/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./config/logstash-router/valid_topics.yml:/usr/share/logstash/config/valid_topics.yml:ro
+      - ./config/logstash-router/pipeline:/usr/share/logstash/pipeline:ro
+    env_file: .env
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
     mem_limit: ${MEM_LIMIT}
     networks:
@@ -315,6 +517,7 @@ services:
     env_file: .env
     environment:
       - MONITORING_PASSWORD=${MONITORING_PASSWORD}
+    mem_limit: 314572800
     command: ["metricbeat", "-e", "--strict.perms=false"]
     networks:
       - dod-elastic
@@ -333,6 +536,7 @@ services:
     env_file: .env
     environment:
       - MONITORING_PASSWORD=${MONITORING_PASSWORD}
+    mem_limit: 314572800
     command: ["metricbeat", "-e", "--strict.perms=false"]
     networks:
       - dod-elastic
@@ -351,6 +555,7 @@ services:
     env_file: .env
     environment:
       - MONITORING_PASSWORD=${MONITORING_PASSWORD}
+    mem_limit: 314572800
     command: ["metricbeat", "-e", "--strict.perms=false"]
     networks:
       - dod-elastic
@@ -365,5 +570,7 @@ volumes:
   es-remote-a-data:
   es-remote-b-data:
   kibana-data:
-  kafka-data:
+  kafka1-data:
+  kafka2-data:
+  kafka3-data:
   init-state:

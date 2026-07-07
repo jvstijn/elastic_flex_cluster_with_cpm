@@ -7,7 +7,7 @@ elastic_pw: "{{ lookup('ini', 'ELASTIC_PASSWORD type=properties file=' ~ cpm_env
 kibana_password: "{{ lookup('ini', 'KIBANA_PASSWORD type=properties file=' ~ cpm_env_file) }}"
 
 elastic_base_url: "https://central.kaposi.net"
-kibana_base_url: "https://cpm.kaposi.net"
+kibana_url: "https://cpm.kaposi.net"
 cpm_validate_certs: true
 
 # Watchers run on es-central-01; webhook callbacks use docker DNS + port 9200
