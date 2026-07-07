@@ -1,4 +1,4 @@
-import type { IRouter } from '@kbn/core/server';
+import type { IRouter, RequestHandlerContext } from '@kbn/core/server';
 import { schema } from '@kbn/config-schema';
 import {
   CPM_CLUSTER_REGISTRY,
@@ -10,11 +10,25 @@ import {
   WATCHER_FORECAST,
 } from '../../common/constants';
 import type { RunChainResponse, WatcherRunResult } from '../../common/types';
+import { userCanAccessCpm } from '../lib/check_access';
 
 /** ES index mappings are strict; never persist Kibana/API metadata fields like `id`. */
 function withoutApiMeta<T extends Record<string, unknown>>(body: T): Omit<T, 'id'> {
   const { id: _id, ...rest } = body;
   return rest;
+}
+
+async function denyUnlessCpmAccess(
+  context: RequestHandlerContext,
+  response: { forbidden: (opts: { body: { message: string } }) => unknown }
+) {
+  const esClient = (await context.core).elasticsearch.client.asCurrentUser;
+  if (await userCanAccessCpm(esClient)) {
+    return null;
+  }
+  return response.forbidden({
+    body: { message: 'Cluster Pipeline Manager requires monitor, manage, manage_pipeline, or manage_logstash_pipelines.' },
+  });
 }
 
 async function runWatcher(
@@ -35,7 +49,16 @@ async function runWatcher(
 }
 
 export function defineRoutes(router: IRouter) {
+  router.get({ path: '/api/cpm/access', validate: false }, async (context, _request, response) => {
+    const esClient = (await context.core).elasticsearch.client.asCurrentUser;
+    const allowed = await userCanAccessCpm(esClient);
+    return response.ok({ body: { allowed } });
+  });
+
   router.get({ path: '/api/cpm/clusters', validate: false }, async (context, _request, response) => {
+    const denied = await denyUnlessCpmAccess(context, response);
+    if (denied) return denied;
+
     const esClient = (await context.core).elasticsearch.client.asCurrentUser;
     try {
       const result = await esClient.search({
@@ -64,6 +87,9 @@ export function defineRoutes(router: IRouter) {
       },
     },
     async (context, request, response) => {
+      const denied = await denyUnlessCpmAccess(context, response);
+      if (denied) return denied;
+
       const esClient = (await context.core).elasticsearch.client.asCurrentUser;
       const clusterId = (request.params as { clusterId: string }).clusterId;
       const body = withoutApiMeta(request.body as Record<string, unknown>);
@@ -97,6 +123,9 @@ export function defineRoutes(router: IRouter) {
   router.get(
     { path: '/api/cpm/scoring', validate: false },
     async (context, _request, response) => {
+      const denied = await denyUnlessCpmAccess(context, response);
+      if (denied) return denied;
+
       const esClient = (await context.core).elasticsearch.client.asCurrentUser;
       try {
         const result = await esClient.get({
@@ -121,6 +150,9 @@ export function defineRoutes(router: IRouter) {
       forecast_horizon_hours: schema.number(),
     }),
   } }, async (context, request, response) => {
+    const denied = await denyUnlessCpmAccess(context, response);
+    if (denied) return denied;
+
     const esClient = (await context.core).elasticsearch.client.asCurrentUser;
     const body = request.body as {
       weights: Record<string, number>;
@@ -159,6 +191,9 @@ export function defineRoutes(router: IRouter) {
   });
 
   router.get({ path: '/api/cpm/locks', validate: false }, async (context, _request, response) => {
+    const denied = await denyUnlessCpmAccess(context, response);
+    if (denied) return denied;
+
     const esClient = (await context.core).elasticsearch.client.asCurrentUser;
     try {
       const result = await esClient.search({
@@ -187,6 +222,9 @@ export function defineRoutes(router: IRouter) {
       },
     },
     async (context, request, response) => {
+      const denied = await denyUnlessCpmAccess(context, response);
+      if (denied) return denied;
+
       const esClient = (await context.core).elasticsearch.client.asCurrentUser;
       const lockId = (request.params as { lockId: string }).lockId;
       const body = withoutApiMeta(request.body as Record<string, unknown>);
@@ -223,6 +261,9 @@ export function defineRoutes(router: IRouter) {
       },
     },
     async (context, request, response) => {
+      const denied = await denyUnlessCpmAccess(context, response);
+      if (denied) return denied;
+
       const esClient = (await context.core).elasticsearch.client.asCurrentUser;
       const lockId = (request.params as { lockId: string }).lockId;
       try {
@@ -251,6 +292,9 @@ export function defineRoutes(router: IRouter) {
       },
     },
     async (context, request, response) => {
+      const denied = await denyUnlessCpmAccess(context, response);
+      if (denied) return denied;
+
       const esClient = (await context.core).elasticsearch.client.asCurrentUser;
       const body = (request.body ?? {}) as {
         watchers?: string[];

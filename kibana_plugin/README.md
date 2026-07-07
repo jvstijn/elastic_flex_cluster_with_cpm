@@ -168,12 +168,29 @@ The Dockerfile uses the same Kibana clone + `yarn build` flow as `scripts/build_
 
 ## Permissions
 
-Server routes use `elasticsearch.client.asCurrentUser`. The logged-in Kibana user needs:
+### Visibility (Stack Management → Ingest → Cluster Pipeline Manager)
 
-- Read/write on `cpm-cluster-registry`, `cpm-routing-config`
-- `manage_watcher` (or superuser) to execute watchers
+The plugin registers an Elasticsearch feature (same mechanism as Ingest Pipelines / Logstash Pipelines). The nav link is shown only when the logged-in user has **any** of these cluster privileges:
 
-The `elastic` superuser satisfies these requirements.
+- `monitor`
+- `manage`
+- `manage_pipeline`
+- `manage_logstash_pipelines`
+
+The built-in `superuser` role satisfies this. Custom admin roles work when they include at least one of the privileges above.
+
+`kibana_admin` grants all Kibana management UI capabilities, which would otherwise bypass the Elasticsearch-feature check. The plugin therefore calls `GET /api/cpm/access` on startup and hides the nav item when the user lacks the required cluster privileges.
+
+This is **not** controlled by Space feature toggles (Fleet, Dev Tools, etc.).
+
+### Using the UI
+
+Server routes use `elasticsearch.client.asCurrentUser` and enforce the same cluster privilege check. Additionally:
+
+- Read/write on `cpm-cluster-registry`, `cpm-routing-config` for registry, scoring, and locks
+- `manage_watcher` (or superuser) to execute watchers from the **Run CPM** tab
+
+The `elastic` superuser satisfies all of these requirements.
 
 ---
 

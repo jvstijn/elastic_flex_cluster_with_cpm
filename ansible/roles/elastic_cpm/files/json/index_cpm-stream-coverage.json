@@ -30,6 +30,9 @@
       "topic": {
         "type": "keyword"
       },
+      "writes_detected": {
+        "type": "long"
+      },
       "cpm_managed": {
         "type": "boolean"
       },

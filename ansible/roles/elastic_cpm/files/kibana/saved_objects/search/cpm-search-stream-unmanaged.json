@@ -1,16 +1,21 @@
 {
   "attributes": {
-    "title": "Unmanaged streams per cluster",
+    "title": "Unmanaged data streams with writes (last hour)",
     "description": "",
     "columns": [
       "cluster_name",
-      "index_name",
-      "stream_key",
+      "data_stream_type",
+      "dataset",
+      "namespace",
+      "writes_detected",
       "topic",
-      "management_status",
       "recorded_at"
     ],
     "sort": [
+      [
+        "writes_detected",
+        "desc"
+      ],
       [
         "cluster_name",
         "asc"

@@ -117,7 +117,7 @@ steps:
           {%- if ing -%}{%- for n in ing.by_node.buckets -%}{{ n.hostname.buckets[0].key }}{%- unless forloop.last -%},{%- endunless -%}{%- endfor -%}{%- endif -%}
         active: >-
           {%- assign ex = steps.existing_registry.output.hits.hits | map: '_source' | where: 'cluster_uuid', item.key | first -%}
-          {%- if ex -%}{{ ex.active }}{%- else -%}true{%- endif -%}
+          {%- if ex -%}{{ ex.active }}{%- else -%}false{%- endif -%}
 
   # --- Write: upsert each cluster doc --------------------------------------
   - name: upsert_registry

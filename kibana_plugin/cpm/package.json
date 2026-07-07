@@ -1,6 +1,6 @@
 {
   "name": "cpm",
-  "version": "1.0.3",
+  "version": "1.0.6",
   "private": true,
   "scripts": {
     "build": "node ../../scripts/plugin_helpers build",
