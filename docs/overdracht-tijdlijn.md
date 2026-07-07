@@ -1,7 +1,7 @@
 # Overdracht — tijdlijn van wijzigingen (week van 30 juni 2026)
 
 Verslag voor de overdracht: wat is er deze week gewijzigd en waarom.
-Periode: **di 30-06** t/m **do 02-07-2026**. Branch: `mod-jan` (klaar voor PR → `main`).
+Periode: **di 30-06** t/m **di 07-07-2026**. Branch: `mod-jan` (up-to-date met `main`, PR-klaar).
 (Maandag 29-06 zijn er geen wijzigingen; het werk begon dinsdag.)
 
 ## Executive summary
@@ -85,6 +85,24 @@ operationele hardening.
 | `0ae4378` | Router-woordenboek (`valid_topics.yml`) ververst | Na herbouw van de topics. |
 | `8152a65` | Documentatie bijgewerkt | Healthchecks, persistentie, geheugen vastgelegd. |
 
+### Vrijdag 03-07 — routing-overrides getest + rename
+| Commit | Wijziging | Waarom |
+|---|---|---|
+| `f99e776` | Ansible-variabele `kibana_base_url` → `kibana_url` (7 bestanden) | Consistente naamgeving. |
+| `ae4a101` | `docs/runbook-stream-routing.md` — **force/exclude runbook** | Productie-stappen om een data stream naar een ander cluster te **forceren** (stream-lock in `cpm-routing-config`) of **uit te sluiten** (`cpm-stream-exclusions`). Live getest: force central→remote-a én exclude, beide teruggedraaid. |
+| `c45076f` | testresultaat toegevoegd | — |
+| *(main)* `78bae40`, `493bd30`, `8c3d868` | pipeline-manager delete-fix + `cpm-stream-coverage` watcher | Parallel main-spoor. |
+
+Twee productie-inzichten uit de test: de state is **sticky** (een lock/exclusion weghalen
+zet niet automatisch terug) en een `dc`-wijziging laat **oude `default_cpm-*` pipelines**
+staan die dubbel consumeren. Beide staan in de runbook.
+
+### Dinsdag 07-07 — duplicaat-check + bijgewerkt tot main
+| Commit | Wijziging | Waarom |
+|---|---|---|
+| `33fa71a` | Coverage-checker: **detectie van dubbele topics** | Een topic mag maar in **één** pipeline; live **22 duplicaten** gevonden (cpm ↔ cpmw overlap = dubbele ingest). Exit-code ≠ 0 bij dubbel/missend. |
+| `01f862a` | **Merge `origin/main` → `mod-jan`** (2 conflicten opgelost) | main was 9 commits vooruit (o.a. hardening `746b364`, `cpm-stream-coverage` watcher). `mod-jan` nu **0 achter**, PR-klaar. |
+
 ---
 
 ## 3. De belangrijkste wijzigingen, inhoudelijk
@@ -106,9 +124,10 @@ Gedetailleerd in **`docs/CPM-coverage-en-state-manager-bevindingen.md`**. Sameng
   → `ns=default`, `topic=<data-stream-naam>`.
 - **Effect:** coverage MISSING **239 → 9** in één run-cyclus (de resterende 9 zijn een
   test-data-artefact van "kale + `-default`" duplicaten).
-- Toegepast in **beide**: de watcher (`cpm-state-manager`) én de workflow
-  (`cpmw-state-manager`). Op `main` had Imre alleen Bug A gefixt; de merge behoudt
-  onze superset (A + B).
+- Toegepast in **beide**: de watcher én de workflow. **Eindstand na de merge met main
+  (07-07):** de watcher draait op main's geharde versie — die lost Bug A al op via een
+  `type|dataset|namespace`-sleutel en heeft `max_iterations: 16384`; daarop is alleen onze
+  **Bug B**-fix opnieuw toegepast. De cpmw-workflow houdt onze Bug B (`keep >= 2`).
 
 ### 3.3 Kafka + Logstash-topologie (`863ce99`)
 - **3-broker KRaft-cluster** (`kafka`/`kafka2`/`kafka3`), RF 3, `min.insync.replicas=2`.
@@ -133,27 +152,34 @@ De crashes die zichtbaar waren, hadden **twee** oorzaken die nu beide zijn opgel
 Let op: wat eerst als "OOM" leek, was géén geheugen-OOM (`OOMKilled=false`, Docker-VM
 heeft 34 GB) maar een `docker compose`-recreate die de containers neerhaalde.
 
-### 3.6 Merge met `main` (`ad11e33`)
-3 conflicten opgelost: `watcher_cpm-state-manager.json.j2` (onze A+B behouden; main's
-`max_iterations`/`size` matchten), en de 2 pipeline-templates (main's `description` +
-onze 3-broker `kafka_bootstrap`). `cpmw-state-manager.yml` mergede automatisch.
+### 3.6 Merges met `main` (`ad11e33`, `01f862a`) + duplicaat-check
+Twee keer gemerged. Bij de **tweede** (07-07) was main fors vooruit (hardening `746b364`:
+home-cluster-rehoming, stale-simulator-cleanup, `max_iterations: 16384`). Resolutie: main's
+geharde `watcher_cpm-state-manager.json.j2` als basis + onze **Bug B** eroverheen; en
+`tasks/dashboard.yml` = main's versie + de `kibana_url`-rename. Onze 3-broker
+`kafka_bootstrap` en de cpmw Bug B mergeden automatisch mee. `mod-jan` is nu 0 achter main.
+
+De coverage-checker meldt sinds `33fa71a` ook **dubbele topics** (een topic in >1 pipeline);
+live gaf dat 22 hits door de parallelle cpm/cpmw-pipelines.
 
 ---
 
-## 4. Huidige staat (do 02-07)
+## 4. Huidige staat (di 07-07)
 
 - **Stack draait** (alles Up/healthy): 3× ES, 3× Kafka (healthy), Kibana, kafka-ui,
   5× Logstash (beats/central/remote-a/remote-b/router), 3× metricbeat.
 - **Kafka gevuld**: ~1.800.000 events, 4 grote topics ~203k, nu **persistent** op de
   volumes.
 - **Geheugen**: footprint ~14,6 GB (Docker-VM 34 GB).
-- **Git**: alles gecommit en gepusht naar `origin/mod-jan`. `mod-jan` is 0 commits
-  achter en klaar voor een conflictvrije PR → `main`.
+- **Coverage-checker**: detecteert nu ook **dubbele topics** (topic in >1 pipeline).
+- **Git**: `mod-jan` is **bijgewerkt tot `main`** (0 commits achter, 23 vooruit), alles
+  gepusht — klaar voor een conflictvrije PR → `main`.
 
 ## 5. Openstaande punten / vervolgstappen
 
-1. **PR `mod-jan` → `main`** staat nog open (geen `gh`/token op de machine; pre-filled
-   link is eerder gedeeld).
+1. **PR `mod-jan` → `main` nog aanmaken** (geen `gh`/token op de machine; open de
+   compare-link `github.com/jvstijn/elastic_flex_cluster_with_cpm/compare/main...mod-jan?expand=1`).
+   `mod-jan` is up-to-date met `main`.
 2. **CPM-write-path niet volledig bedraad**: de per-cluster Logstash draaien pas hun
    pipelines nadat `node.attr.dc` is geactiveerd (recreate ES + `register-sync`), en de
    pipeline-`ingest_hosts` zijn nu container-ID's i.p.v. `https://…:9200`-URL's + er
@@ -165,6 +191,10 @@ onze 3-broker `kafka_bootstrap`). `cpmw-state-manager.yml` mergede automatisch.
 4. **Orphan** `logstash-managed` (oude container) — opruimen met
    `docker compose up -d --remove-orphans`.
 5. **`TESTRESULTS-2026-06-26.md`** staat untracked; nog beslissen of dat in git moet.
+6. **`ansible/.env`** staat als tracked bestand in de repo (met `*_PASSWORD`-vars; komt van
+   `main`, niet van deze branch) — overweeg gitignore + untrack.
+7. **Dubbele topics** (22, cpm ↔ cpmw) — in productie draai je normaal één van de twee
+   tracks; de `default_cpmw-*` pipelines kunnen uit als je de watchers gebruikt.
 
 ## 6. Operationele scripts (voor de nieuwe beheerder)
 
@@ -183,4 +213,6 @@ onze 3-broker `kafka_bootstrap`). `cpmw-state-manager.yml` mergede automatisch.
   twee state-manager bugs en de fixes.
 - `docs/kafka-logstash-setup.md` — Kafka-cluster, per-cluster Logstash, router/DLQ,
   opstart/persistentie/geheugen, en de bekende aandachtspunten.
+- `docs/runbook-stream-routing.md` — productie-stappen om een data stream naar een ander
+  cluster te **forceren** of **uit te sluiten** (+ de sticky-state/stale-pipeline caveats).
 - **Dit document** — overdracht-tijdlijn op hoofdlijnen.
