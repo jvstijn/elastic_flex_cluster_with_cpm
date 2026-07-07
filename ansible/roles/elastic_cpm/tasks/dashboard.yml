@@ -108,6 +108,11 @@
     label: "{{ item.id }}"
   tags: [dashboard]
 
+- name: Set CPM stream lock count
+  ansible.builtin.set_fact:
+    cpm_lock_count: "{{ cpm_stream_lock_count.json.count | default(0) | int }}"
+  tags: [dashboard]
+
 - name: Build stream locks status markdown visualization body
   ansible.builtin.set_fact:
     cpm_kibana_stream_locks_status_body:
@@ -120,12 +125,11 @@
           searchSourceJSON: '{"query":{"query":"","language":"kuery"},"filter":[]}'
       references: []
   vars:
-    lock_count: "{{ cpm_stream_lock_count.json.count | default(0) | int }}"
     stream_locks_status_md: >-
-      {% if lock_count > 0 -%}
+      {% if cpm_lock_count | int > 0 -%}
       ### Active stream locks
 
-      **{{ lock_count }} lock(s) configured** in `cpm-routing-config` (`config_type: stream_lock`).
+      **{{ cpm_lock_count }} lock(s) configured** in `cpm-routing-config` (`config_type: stream_lock`).
 
       The table below lists each lock. After changes, run **cpm-state-manager** then **cpm-pipeline-manager**.
       {%- else -%}
@@ -135,14 +139,17 @@
 
       Create a lock with the PUT example above; it will appear in the table after refresh.
       {%- endif %}
-    stream_locks_status_vis:
-      title: Active stream locks
-      type: markdown
-      aggs: []
-      params:
-        fontSize: 14
-        openLinksInNewTab: true
-        markdown: "{{ stream_locks_status_md }}"
+    stream_locks_status_vis: >-
+      {{ {
+        'title': 'Active stream locks',
+        'type': 'markdown',
+        'aggs': [],
+        'params': {
+          'fontSize': 14,
+          'openLinksInNewTab': true,
+          'markdown': stream_locks_status_md
+        }
+      } }}
   tags: [dashboard]
 
 - name: Deploy stream locks status markdown visualization
