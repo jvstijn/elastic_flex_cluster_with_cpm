@@ -15,7 +15,10 @@ For every data stream / filebeat index seen in monitoring in the last N hours
   * which Logstash pipeline(s) consume that topic.
 
 It then shows a per-index overview, a coverage summary (indices read by no
-pipeline) and orphan topics (pipeline topics with no matching index).
+pipeline), orphan topics (pipeline topics with no matching index) and
+DUPLICATE topics (a topic that occurs in more than one Logstash pipeline -- a
+topic must be consumed by exactly one pipeline, otherwise data is ingested
+twice; e.g. stale pipelines left after a dc change).
 
 The report is printed to the screen AND written to a file.
 Only stdlib is used. The script prompts for a username and password.
@@ -258,6 +261,10 @@ def main() -> int:
 
     orphan_topics = sorted(set(topic_to_pipes) - used_topics)
 
+    # A topic must be consumed by exactly ONE Logstash pipeline; more than one
+    # means duplicate ingestion (e.g. stale pipelines left after a dc change).
+    duplicate_topics = {t: sorted(p) for t, p in topic_to_pipes.items() if len(p) > 1}
+
     # --- 5. Build the report (screen + file) ---------------------------------
     report: list[str] = []
 
@@ -301,6 +308,12 @@ def main() -> int:
     emit(f"  indices on active clusters (last {args.hours}h) : {len(routable)}")
     emit(f"  covered by a pipeline                     : {covered}")
     emit(f"  NOT covered (no pipeline)                 : {len(missing)}")
+    emit(f"  DUPLICATE topics (in >1 pipeline)          : {len(duplicate_topics)}")
+    if duplicate_topics:
+        emit("  Topics consumed by more than one pipeline (must be exactly ONE):")
+        for t in sorted(duplicate_topics):
+            pipes = duplicate_topics[t]
+            emit(f"    - {t}   (in {len(pipes)}: {', '.join(pipes)})")
     if missing:
         emit("  Indices without a pipeline (their topic is read by no pipeline):")
         for n in missing:
@@ -322,7 +335,7 @@ def main() -> int:
     except OSError as e:
         print(f"\nCould not write report file {outfile}: {e}", file=sys.stderr)
 
-    return 1 if missing else 0
+    return 1 if (missing or duplicate_topics) else 0
 
 
 def _fail(msg: str) -> int:
