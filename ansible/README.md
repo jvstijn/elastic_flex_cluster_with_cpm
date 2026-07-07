@@ -7,7 +7,7 @@ Installs the full Cluster Pipeline Manager stack on **es-central** via the Elast
 | Inventory | Use case |
 |-----------|----------|
 | `inventories/kaposi` **(default)** | imr-dod-vm reference stack via public nginx (`central.kaposi.net`, `cpm.kaposi.net`) |
-| `inventories/local` | Jan 3-cluster docker-compose demo on localhost |
+| `inventories/local` | 3-cluster demo — `Jan/docker-local` + Ansible on localhost |
 
 Default in `ansible.cfg` is **kaposi**. Override:
 
