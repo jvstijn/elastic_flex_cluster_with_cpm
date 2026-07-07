@@ -53,7 +53,8 @@ python3 ../scripts/bootstrap_cpm_pipelines.py
 2. Runs `cpm-registry-sync`, then patches `ingest_hosts` / `dc` on each cluster
 3. Runs scoring → routing-advisor → state-manager
 4. Pushes CPM pipelines to `logstash-managed` via `/_logstash/pipeline`
-5. Removes the bootstrap `kafka-to-central` pipeline
+5. Runs `cpm-stream-coverage` to populate `cpm-stream-coverage` (Platform Overview stream coverage panels)
+6. Removes the bootstrap `kafka-to-central` pipeline
 
 Expected pipelines on `logstash-managed`:
 
@@ -65,6 +66,7 @@ Expected pipelines on `logstash-managed`:
 ```bash
 curl -sk -u elastic:$ELASTIC_PASSWORD https://localhost:9200/_logstash/pipeline
 curl -sk -u elastic:$ELASTIC_PASSWORD https://localhost:9200/cpm-pipeline-state/_search?size=20
+curl -sk -u elastic:$ELASTIC_PASSWORD https://localhost:9200/cpm-stream-coverage/_search?size=20
 curl -sk -u elastic:$ELASTIC_PASSWORD https://localhost:9200/cpm-scores/_search?sort=scored_at:desc&size=1
 ```
 

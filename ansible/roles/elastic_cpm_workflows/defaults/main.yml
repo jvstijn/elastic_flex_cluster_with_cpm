@@ -18,6 +18,7 @@ kibana_base_url: "{{ kibana_scheme }}://{{ kibana_host }}:{{ kibana_port }}"
 cpmw_indices:
   - { name: "cpmw-cluster-registry", file: "json/index_cpmw-cluster-registry.json" }
   - { name: "cpmw-scores",           file: "json/index_cpmw-scores.json" }
+  - { name: "cpmw-pipeline-state",   file: "json/index_cpmw-pipeline-state.json" }
 
 cpmw_pipeline_templates:
   - { id: "catchall",  file: "json/cpmw-pipeline-template-catchall.json" }

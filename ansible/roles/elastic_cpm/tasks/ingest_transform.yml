@@ -38,6 +38,42 @@
   when: cpm_transform_exists.status == 404
   tags: [transform]
 
+- name: Update CPM watcher status transform
+  when: cpm_transform_exists.status == 200
+  block:
+    - name: Stop watcher status transform before update
+      ansible.builtin.uri:
+        url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync/_stop?wait_for_completion=true"
+        method: POST
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        status_code: [200, 409]
+
+    - name: Delete watcher status transform before update
+      ansible.builtin.uri:
+        url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync"
+        method: DELETE
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        status_code: [200]
+
+    - name: Recreate CPM watcher status transform
+      ansible.builtin.uri:
+        url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync"
+        method: PUT
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        body_format: json
+        body: "{{ lookup('file', role_path + '/files/json/transform_cpm-watcher-status-sync.json') }}"
+        status_code: [200, 201]
+  tags: [transform]
+
 - name: Check watcher status transform state
   ansible.builtin.uri:
     url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync/_stats"

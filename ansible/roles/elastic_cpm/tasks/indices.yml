@@ -46,3 +46,20 @@
   loop_control:
     label: "{{ item.name }}"
   tags: [indices]
+
+- name: Apply CPM index dynamic settings
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/{{ item.key }}/_settings"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body:
+      index: "{{ item.value }}"
+    status_code: [200, 404]
+  loop: "{{ cpm_index_dynamic_settings | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  tags: [indices]

@@ -13,9 +13,8 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-DATA_STREAM = "logs-nginx.access-tst"
-DATASET = "nginx.access"
-NAMESPACE = "tst"
+DEFAULT_DATA_STREAM = "logs-nginx.access-tst"
+DEFAULT_EVENT_DATASET = "nginx.access"
 
 HOSTNAMES = ("edge-01", "edge-02", "web-01", "web-02", "lb-01", "cdn-01")
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
@@ -75,8 +74,27 @@ HTTP_VERSIONS = ("HTTP/1.1", "HTTP/2.0", "HTTP/1.0")
 USERS = ("-", "admin", "appuser", "deploy", "-", "-", "-")
 
 
+def parse_data_stream(name: str) -> tuple[str, str, str, str]:
+    """Return (data_stream, stream_type, dataset, namespace)."""
+    if name.count("-") < 2:
+        raise SystemExit(f"Invalid data stream name: {name!r} (expected e.g. logs-nginx-prd.05)")
+    stream_type, rest = name.split("-", 1)
+    dataset, namespace = rest.rsplit("-", 1)
+    return name, stream_type, dataset, namespace
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Simulate nginx access log indexing load")
+    p.add_argument(
+        "--data-stream",
+        default=os.environ.get("ES_DATA_STREAM", DEFAULT_DATA_STREAM),
+        help="Target data stream (e.g. logs-nginx-prd.05)",
+    )
+    p.add_argument(
+        "--event-dataset",
+        default=None,
+        help="ECS event.dataset (default: nginx.access, or nginx.access when stream dataset is nginx)",
+    )
     p.add_argument("--host", default=os.environ.get("ES_HOST", "https://localhost:9201"))
     p.add_argument("--user", default=os.environ.get("ES_USER", "elastic"))
     p.add_argument("--password", default=os.environ.get("ES_PASSWORD", "changeme-elastic"))
@@ -87,6 +105,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--start-seq", type=int, default=0, help="Minimum sequence offset (resume uses index count when --target-total is set)")
     p.add_argument("--target-total", type=int, default=None, help="Index until data stream reaches this count")
     p.add_argument("--pause-ms", type=int, default=50, help="Pause between bulk batches")
+    p.add_argument(
+        "--duration-minutes",
+        type=float,
+        default=None,
+        help="Spread indexing of --count documents evenly over this wall-clock duration",
+    )
     p.add_argument("--max-retries", type=int, default=12)
     p.add_argument("--ca-cert", default=os.environ.get("REQUESTS_CA_BUNDLE"))
     p.add_argument("--days-back", type=float, default=1.0, help="Legacy: spread timestamps over the last N days ending now")
@@ -122,7 +146,15 @@ def nginx_time(ts: datetime) -> str:
 
 
 def gen_nginx_line(
-    rng: random.Random, seq: int, time_start: datetime, time_end: datetime
+    rng: random.Random,
+    seq: int,
+    time_start: datetime,
+    time_end: datetime,
+    *,
+    event_dataset: str,
+    stream_type: str,
+    stream_dataset: str,
+    namespace: str,
 ) -> tuple[str, dict]:
     hostname = rng.choice(HOSTNAMES)
     remote_ip = f"{rng.randint(1, 223)}.{rng.randint(0, 255)}.{rng.randint(0, 255)}.{rng.randint(1, 254)}"
@@ -171,15 +203,15 @@ def gen_nginx_line(
         "@timestamp": ts_iso,
         "message": line,
         "event": {
-            "dataset": DATASET,
+            "dataset": event_dataset,
             "module": "nginx",
             "category": ["web"],
             "type": ["access"],
         },
         "data_stream": {
-            "type": "logs",
-            "dataset": DATASET,
-            "namespace": NAMESPACE,
+            "type": stream_type,
+            "dataset": stream_dataset,
+            "namespace": namespace,
         },
         "host": {"hostname": hostname, "name": hostname},
         "source": {"ip": remote_ip},
@@ -210,10 +242,10 @@ def gen_nginx_line(
     return line, doc
 
 
-def bulk_batch(docs: list[dict]) -> str:
+def bulk_batch(data_stream: str, docs: list[dict]) -> str:
     lines: list[str] = []
     for doc in docs:
-        lines.append(json.dumps({"create": {"_index": DATA_STREAM}}))
+        lines.append(json.dumps({"create": {"_index": data_stream}}))
         lines.append(json.dumps(doc))
     return "\n".join(lines) + "\n"
 
@@ -256,8 +288,19 @@ def resolve_time_window(args: argparse.Namespace) -> tuple[datetime, datetime]:
 
 def main() -> int:
     args = parse_args()
+    data_stream, stream_type, stream_dataset, namespace = parse_data_stream(args.data_stream)
+    event_dataset = args.event_dataset or (
+        "nginx.access" if stream_dataset == "nginx" else stream_dataset
+    )
     rng = random.Random(args.seed)
-    time_start, time_end = resolve_time_window(args)
+    if args.duration_minutes is not None:
+        if args.duration_minutes <= 0:
+            raise SystemExit("--duration-minutes must be positive")
+        ingest_start = datetime.now(timezone.utc)
+        time_start = ingest_start
+        time_end = ingest_start + timedelta(minutes=args.duration_minutes)
+    else:
+        time_start, time_end = resolve_time_window(args)
 
     session = requests.Session()
     session.headers.update(auth_headers(args))
@@ -274,7 +317,7 @@ def main() -> int:
 
     if args.target_total is not None:
         count_r = session.get(
-            f"{args.host.rstrip('/')}/{DATA_STREAM}/_count",
+            f"{args.host.rstrip('/')}/{data_stream}/_count",
             auth=auth_tuple(args),
             verify=verify,
             timeout=30,
@@ -283,11 +326,11 @@ def main() -> int:
         args.start_seq = max(args.start_seq, existing)
         args.count = max(0, args.target_total - existing)
         if args.count == 0:
-            print(f"Target already reached: {existing:,} documents in {DATA_STREAM}")
+            print(f"Target already reached: {existing:,} documents in {data_stream}")
             return 0
     elif args.start_seq == 0:
         count_r = session.get(
-            f"{args.host.rstrip('/')}/{DATA_STREAM}/_count",
+            f"{args.host.rstrip('/')}/{data_stream}/_count",
             auth=auth_tuple(args),
             verify=verify,
             timeout=30,
@@ -296,22 +339,39 @@ def main() -> int:
             args.start_seq = count_r.json().get("count", 0)
 
     print(f"Target: {args.host} (cluster: {cluster})")
-    print(f"Data stream: {DATA_STREAM} ({args.count:,} documents, batch={args.batch_size:,})")
+    print(f"Data stream: {data_stream} ({args.count:,} documents, batch={args.batch_size:,})")
+    print(f"ECS event.dataset={event_dataset}, data_stream.namespace={namespace}")
+    if args.duration_minutes is not None:
+        target_rate = args.count / (args.duration_minutes * 60)
+        print(
+            f"Paced ingest: {args.duration_minutes:g} min "
+            f"(~{target_rate:,.0f} docs/s target)"
+        )
     print(f"Timestamp window: {time_start.isoformat()} -> {time_end.isoformat()}")
 
     sent = 0
     errors = 0
     t0 = time.perf_counter()
     seq_base = args.start_seq
+    duration_sec = args.duration_minutes * 60 if args.duration_minutes is not None else None
 
     while sent < args.count:
         n = min(args.batch_size, args.count - sent)
         batch_docs = [
-            gen_nginx_line(rng, seq_base + sent + i + 1, time_start, time_end)[1]
+            gen_nginx_line(
+                rng,
+                seq_base + sent + i + 1,
+                time_start,
+                time_end,
+                event_dataset=event_dataset,
+                stream_type=stream_type,
+                stream_dataset=stream_dataset,
+                namespace=namespace,
+            )[1]
             for i in range(n)
         ]
 
-        result = post_bulk(session, args, bulk_batch(batch_docs))
+        result = post_bulk(session, args, bulk_batch(data_stream, batch_docs))
         if result.get("errors"):
             for item in result.get("items", []):
                 action = item.get("create") or item.get("index") or {}
@@ -328,12 +388,18 @@ def main() -> int:
             f"({rate:,.0f} docs/s, errors={errors})",
             flush=True,
         )
-        if args.pause_ms > 0 and sent < args.count:
-            time.sleep(args.pause_ms / 1000)
+        if sent < args.count:
+            if duration_sec is not None:
+                target_elapsed = duration_sec * (sent / args.count)
+                sleep_for = target_elapsed - (time.perf_counter() - t0)
+                if sleep_for > 0:
+                    time.sleep(sleep_for)
+            elif args.pause_ms > 0:
+                time.sleep(args.pause_ms / 1000)
 
     elapsed = time.perf_counter() - t0
     print(f"\nDone: {sent:,} documents in {elapsed:.1f}s ({sent / elapsed:,.0f} docs/s)")
-    print(f"Verify: GET {args.host}/{DATA_STREAM}/_count")
+    print(f"Verify: GET {args.host}/{data_stream}/_count")
     return 0 if errors == 0 else 1
 
 

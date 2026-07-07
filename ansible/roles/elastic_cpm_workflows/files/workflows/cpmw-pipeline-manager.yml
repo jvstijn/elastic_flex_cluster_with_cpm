@@ -12,7 +12,7 @@ steps:
       method: POST
       path: /cpmw-pipeline-state/_search
       body:
-        size: 1000
+        size: 16384
 
   - name: registry
     type: elasticsearch.request
@@ -20,7 +20,7 @@ steps:
       method: POST
       path: /cpmw-cluster-registry/_search
       body:
-        size: 20
+        size: 32
         query:
           term: { active: true }
         _source: [cluster_id, cluster_uuid, cluster_name, ingest_hosts, dc]
@@ -44,6 +44,12 @@ steps:
         size: 1
         query:
           term: { _id: catchall }
+
+  - name: routing_config
+    type: elasticsearch.request
+    with:
+      method: GET
+      path: /cpm-routing-config/_doc/_global
 
   # --- Flatten + split state by pipeline type ------------------------------
   - name: state_flat
@@ -83,7 +89,7 @@ steps:
           {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.cluster_id | first -%}
           {%- assign tpl = steps.template_dedicated.output.hits.hits[0]._source -%}
           {%- assign cname = item.cluster_id -%}{%- if reg and reg.cluster_name and reg.cluster_name != '' -%}{%- assign cname = reg.cluster_name -%}{%- endif -%}
-          {%- assign groupId = 'cpm-' | append: cname -%}
+          {%- assign groupId = steps.routing_config.output._source.kafka_group_id | default: 'cpm-ingest' -%}
           {%- assign hosts = reg.ingest_hosts | split: ',' -%}
           {%- capture esHosts -%}{%- for h in hosts -%}"{{ h }}:9200"{%- unless forloop.last -%},{%- endunless -%}{%- endfor -%}{%- endcapture -%}
           {%- assign apiKeyVar = 'ES_API_KEY_' | append: item.cluster_id | upcase | replace: '-', '_' -%}
@@ -118,7 +124,7 @@ steps:
           {%- assign reg = steps.registry.output.hits.hits | map: '_source' | where: 'cluster_id', item.cluster_id | first -%}
           {%- assign tpl = steps.template_catchall.output.hits.hits[0]._source -%}
           {%- assign cname = item.cluster_id -%}{%- if reg and reg.cluster_name and reg.cluster_name != '' -%}{%- assign cname = reg.cluster_name -%}{%- endif -%}
-          {%- assign groupId = 'cpm-' | append: cname -%}
+          {%- assign groupId = steps.routing_config.output._source.kafka_group_id | default: 'cpm-ingest' -%}
           {%- assign hosts = reg.ingest_hosts | split: ',' -%}
           {%- capture esHosts -%}{%- for h in hosts -%}"{{ h }}:9200"{%- unless forloop.last -%},{%- endunless -%}{%- endfor -%}{%- endcapture -%}
           {%- assign apiKeyVar = 'ES_API_KEY_' | append: item.cluster_id | upcase | replace: '-', '_' -%}

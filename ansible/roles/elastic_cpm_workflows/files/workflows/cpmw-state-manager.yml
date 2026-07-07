@@ -18,7 +18,7 @@ steps:
       method: POST
       path: /cpmw-routing-suggestions/_search
       body:
-        size: 10
+        size: 32
         sort: [{ suggested_at: { order: desc } }]
         _source: [data_stream_type, dataset, namespace, suggested_cluster_id, source_score, target_score, event_rate_1h, suggested_at]
 
@@ -28,7 +28,7 @@ steps:
       method: POST
       path: /cpmw-cluster-registry/_search
       body:
-        size: 20
+        size: 32
         query:
           term: { active: true }
         _source: [cluster_id, cluster_uuid, cluster_name, ingest_hosts, dc]
@@ -39,7 +39,7 @@ steps:
       method: POST
       path: /cpmw-pipeline-state/_search
       body:
-        size: 1000
+        size: 16384
 
   - name: monitoring_streams
     type: elasticsearch.request
@@ -64,7 +64,7 @@ steps:
         aggs:
           streams:
             composite:
-              size: 1000
+              size: 16384
               sources:
                 - cluster: { terms: { field: elasticsearch.cluster.id } }
                 - index: { terms: { field: elasticsearch.index.name } }

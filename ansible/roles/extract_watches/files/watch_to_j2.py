@@ -2,7 +2,7 @@
 """Fetch CPM watchers from Elasticsearch and write elastic_cpm Jinja2 templates.
 
 Template styles match roles/elastic_cpm/templates conventions:
-  plain  - no Jinja (cpm-scoring)
+  plain  - no Jinja (legacy; prefer scheme)
   simple - direct {{ webhook_host }} / {{ watcher_api_key.encoded }} (forecast-trigger)
   inline - {% raw %} with inline host/auth breaks (routing-advisor, register-sync)
   split  - host/auth split per webhook (pipeline-manager)
@@ -28,7 +28,7 @@ AUTH_PLACEHOLDER = "ApiKey YOUR_API_KEY"
 
 DEFAULT_SPECS: list[dict[str, Any]] = [
     {"watch_id": "cpm-forecast-trigger", "template": "watcher_cpm-forecast-trigger.json.j2", "style": "simple", "alt_watch_ids": []},
-    {"watch_id": "cpm-scoring", "template": "watcher_cpm-scoring.json.j2", "style": "plain", "alt_watch_ids": []},
+    {"watch_id": "cpm-scoring", "template": "watcher_cpm-scoring.json.j2", "style": "scheme", "alt_watch_ids": []},
     {"watch_id": "cpm-routing-advisor", "template": "watcher_cpm-routing-advisor.json.j2", "style": "inline", "alt_watch_ids": []},
     {
         "watch_id": "cpm-registry-sync",

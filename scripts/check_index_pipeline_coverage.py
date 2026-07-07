@@ -14,6 +14,11 @@ pipeline(s) consume that topic. It then shows:
 The report is printed to the screen AND written to a file.
 Only stdlib is used. The script prompts for a username and password.
 
+For the central CPM deployment, the `cpm-stream-coverage` watcher performs the same
+topic-vs-pipeline comparison across all monitored clusters and indexes results into
+`cpm-stream-coverage` (Kibana Platform Overview dashboards). Use this script for
+single-cluster ad-hoc checks or when Watcher is unavailable.
+
 Examples:
   ./check_index_pipeline_coverage.py --insecure
   ./check_index_pipeline_coverage.py --host https://es-central:9200 --ca-cert ca.crt

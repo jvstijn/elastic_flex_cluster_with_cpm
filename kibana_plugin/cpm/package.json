@@ -1,0 +1,14 @@
+{
+  "name": "cpm",
+  "version": "1.0.3",
+  "private": true,
+  "scripts": {
+    "build": "node ../../scripts/plugin_helpers build",
+    "bootstrap": "node ../../scripts/plugin_helpers bootstrap",
+    "dev": "node ../../scripts/plugin_helpers dev"
+  },
+  "kibana": {
+    "version": "8.19.16",
+    "templateVersion": "1.0.0"
+  }
+}

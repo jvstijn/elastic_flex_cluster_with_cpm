@@ -19,6 +19,19 @@ cpm_field_shards_candidates:
 cpm_ml_reinstall: false
 cpm_clean_indices: false
 
+# Max managed data streams (discovery / pipeline-state / monitoring aggs)
+cpm_max_clusters: 32
+cpm_max_datastreams_total: 16384
+cpm_max_datastreams_per_cluster: 2048
+# Max Logstash pipelines pushed/deleted per pipeline-manager run (dedicated + catchall)
+cpm_max_pipelines_per_run: 16416
+
+cpm_index_dynamic_settings:
+  cpm-pipeline-state:
+    max_result_window: 16384
+  cpmw-pipeline-state:
+    max_result_window: 16384
+
 # ISO8601; empty = playbook computes now-2d at runtime
 cpm_datafeed_start: ""
 
@@ -57,6 +70,7 @@ cpm_watchers:
   - { id: cpm-routing-advisor, file: watcher_cpm-routing-advisor.json.j2 }
   - { id: cpm-state-manager, file: watcher_cpm-state-manager.json.j2 }
   - { id: cpm-pipeline-manager, file: watcher_cpm-pipeline-manager.json.j2 }
+  - { id: cpm-stream-coverage, file: watcher_cpm-stream-coverage.json.j2 }
 
 cpm_pipeline_templates:
   - { id: catchall, file: json/cpm-pipeline-template-catchall.json }

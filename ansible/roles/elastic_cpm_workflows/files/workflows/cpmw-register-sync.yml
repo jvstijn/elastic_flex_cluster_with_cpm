@@ -34,7 +34,7 @@ steps:
               - range: { "@timestamp": { gte: now-1d } }
         aggs:
           by_cluster:
-            terms: { field: elasticsearch.cluster.id, size: 20 }
+            terms: { field: elasticsearch.cluster.id, size: 32 }
             aggs:
               cluster_name:
                 terms: { field: elasticsearch.cluster.name, size: 1 }
@@ -54,7 +54,7 @@ steps:
               - terms: { elasticsearch.node.roles: [data, data_content, data_hot, data_cold, data_warm] }
         aggs:
           by_cluster:
-            terms: { field: elasticsearch.cluster.id, size: 20 }
+            terms: { field: elasticsearch.cluster.id, size: 32 }
             aggs:
               by_node:
                 terms: { field: elasticsearch.node.id, size: 200 }
@@ -79,7 +79,7 @@ steps:
               - terms: { elasticsearch.node.roles: [ingest] }
         aggs:
           by_cluster:
-            terms: { field: elasticsearch.cluster.id, size: 20 }
+            terms: { field: elasticsearch.cluster.id, size: 32 }
             aggs:
               by_node:
                 terms: { field: elasticsearch.node.id, size: 200 }
@@ -109,11 +109,9 @@ steps:
         node_count: >-
           {%- assign cap = steps.node_capacity.output.aggregations.by_cluster.buckets | where: 'key', item.key | first -%}
           {%- if cap -%}{{ cap.by_node.buckets | size }}{%- else -%}0{%- endif -%}
-        shard_max_threshold: >-
-          {%- assign cap = steps.node_capacity.output.aggregations.by_cluster.buckets | where: 'key', item.key | first -%}
-          {%- assign heap = 0 -%}{%- if cap and cap.total_heap.value -%}{%- assign heap = cap.total_heap.value -%}{%- endif -%}
-          {%- if heap > 0 -%}{{ heap | divided_by: 1073741824.0 | times: 20.0 | round: 0 }}{%- else -%}1000{%- endif -%}
-        write_queue_threshold: "200"
+        dc: >-
+          {%- assign ex = steps.existing_registry.output.hits.hits | map: '_source' | where: 'cluster_uuid', item.key | first -%}
+          {%- if ex and ex.dc and ex.dc != '' -%}{{ ex.dc }}{%- else -%}unknown{%- endif -%}
         ingest_hosts: >-
           {%- assign ing = steps.ingest_nodes.output.aggregations.by_cluster.buckets | where: 'key', item.key | first -%}
           {%- if ing -%}{%- for n in ing.by_node.buckets -%}{{ n.hostname.buckets[0].key }}{%- unless forloop.last -%},{%- endunless -%}{%- endfor -%}{%- endif -%}
@@ -138,7 +136,6 @@ steps:
             disk_total_bytes: "${{ foreach.item.disk_total_bytes }}"
             heap_max_bytes: "${{ foreach.item.heap_max_bytes }}"
             node_count: "${{ foreach.item.node_count }}"
-            shard_max_threshold: "${{ foreach.item.shard_max_threshold }}"
-            write_queue_threshold: "${{ foreach.item.write_queue_threshold }}"
+            dc: "${{ foreach.item.dc }}"
             ingest_hosts: "${{ foreach.item.ingest_hosts }}"
             active: "${{ foreach.item.active }}"

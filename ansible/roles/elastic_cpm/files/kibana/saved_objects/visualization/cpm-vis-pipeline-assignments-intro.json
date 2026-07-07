@@ -1,7 +1,7 @@
 {
   "attributes": {
     "title": "About",
-    "visState": "{\"title\": \"About\", \"type\": \"markdown\", \"aggs\": [], \"params\": {\"fontSize\": 14, \"openLinksInNewTab\": true, \"markdown\": \"Current routing state from **`cpm-state-manager`** (`cpm-pipeline-state`). Refresh by running the watcher chain (see Platform overview).\\n\"}}",
+    "visState": "{\"title\": \"About\", \"type\": \"markdown\", \"aggs\": [], \"params\": {\"fontSize\": 14, \"openLinksInNewTab\": false, \"markdown\": \"Current routing state from **`cpm-state-manager`** (`cpm-pipeline-state`). Use the **Topic**, **Pipeline ID**, or **Dataset** filters above the table to search with autocomplete. The dashboard query bar supports KQL, e.g. `topic: *gateway* or pipeline_id: *gateway* or dataset: *gateway*`.\\n\"}}",
     "uiStateJSON": "{}",
     "description": "",
     "kibanaSavedObjectMeta": {

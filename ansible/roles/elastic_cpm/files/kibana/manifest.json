@@ -149,6 +149,11 @@
     },
     {
       "type": "search",
+      "id": "cpm-search-scoring-weights",
+      "file": "saved_objects/search/cpm-search-scoring-weights.json"
+    },
+    {
+      "type": "search",
       "id": "cpm-search-pipeline-moves-7d",
       "file": "saved_objects/search/cpm-search-pipeline-moves-7d.json"
     },
@@ -204,11 +209,6 @@
     }
   ],
   "dynamic_visualizations": [
-    {
-      "type": "visualization",
-      "id": "cpm-vis-routing-weights-md",
-      "template": "kibana/cpm-vis-routing-weights-md.json.j2"
-    },
     {
       "type": "visualization",
       "id": "cpm-vis-stream-locks-status",

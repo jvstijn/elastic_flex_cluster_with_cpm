@@ -59,11 +59,30 @@ health="$(es_curl "${ES_URL}/_cluster/health")" || fail "Elasticsearch ${ES_URL}
 cluster="$(echo "${health}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['cluster_name'], d['status'], 'nodes='+str(d['number_of_nodes']))")"
 pass "Elasticsearch cluster health: ${cluster}"
 
+central_name="$(echo "${health}" | python3 -c "import sys,json; print(json.load(sys.stdin)['cluster_name'])")"
+if [ "${central_name}" != "central-cluster" ]; then
+  fail "${ES_URL} returned cluster '${central_name}' (expected central-cluster). Nginx routing is wrong — on imr-dod-vm: cd ~/DoD/docker/reference && ./scripts/reload_nginx_routing.sh"
+fi
+pass "central hostname routes to central-cluster"
+
+remote05_name="$(es_curl "https://cluster05.kaposi.net/" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cluster_name',''))")" || fail "cluster05.kaposi.net"
+if [ "${remote05_name}" != "cluster05" ]; then
+  fail "cluster05.kaposi.net returned '${remote05_name}' (expected cluster05). Run reload_nginx_routing.sh on imr-dod-vm"
+fi
+pass "cluster05 hostname routes to cluster05"
+
 lic="$(es_curl "${ES_URL}/_license" | python3 -c "import sys,json; print(json.load(sys.stdin)['license']['type'])")" || fail "license API"
 pass "License: ${lic}"
 
-mon="$(es_curl -X POST "${ES_URL}/${MON_INDEX}/_search" -H 'Content-Type: application/json' -d '{"size":0,"query":{"range":{"@timestamp":{"gte":"now-1d"}}}}' | python3 -c "import sys,json; d=json.load(sys.stdin); t=d.get('hits',{}).get('total',{}); print(t.get('value',t) if isinstance(t,dict) else t)")" || fail "monitoring search"
-pass "Monitoring docs (24h): ${mon}"
+mon="$(es_curl -X POST "${ES_URL}/${MON_INDEX}/_search" -H 'Content-Type: application/json' -d '{"size":0,"query":{"range":{"@timestamp":{"gte":"now-1d"}}}}' | python3 -c "import sys,json; d=json.load(sys.stdin); t=d.get('hits',{}).get('total',{}); print(t.get('value',t) if isinstance(t,dict) else t)")" || fail "monitoring search (.monitoring-es-8-*)"
+if [ "${mon}" = "0" ] || [ -z "${mon}" ]; then
+  legacy="$(es_curl -X POST "${ES_URL}/.monitoring-es-7-*/_count" -H 'Content-Type: application/json' -d '{"query":{"range":{"@timestamp":{"gte":"now-1d"}}}}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('count',0))" 2>/dev/null || echo 0)"
+  if [ "${legacy}" -gt 0 ] 2>/dev/null; then
+    fail "CPM needs Metricbeat es-8 monitoring; found ${legacy} es-7 docs (legacy). On VM: cd docker/reference && ./scripts/enable_stack_monitoring.sh"
+  fi
+  fail "no .monitoring-es-8-* docs in 24h — run docker/reference/scripts/enable_stack_monitoring.sh on imr-dod-vm"
+fi
+pass "Monitoring docs (24h, es-8): ${mon}"
 
 es_curl "${ES_URL}/_watcher/stats" >/dev/null || fail "Watcher API"
 pass "Watcher API"
