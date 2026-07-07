@@ -50,12 +50,12 @@ steps:
         by_cluster:
           terms:
             field: elasticsearch.cluster.id
-            size: 10
+            size: 32
           aggs:
             by_index:
               terms:
                 field: elasticsearch.index.name
-                size: 500
+                size: 2048
               aggs:
                 over_time:
                   date_histogram:

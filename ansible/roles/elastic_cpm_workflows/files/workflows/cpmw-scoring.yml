@@ -18,7 +18,7 @@ steps:
       method: POST
       path: /cpmw-cluster-registry/_search
       body:
-        size: 10
+        size: 32
         query:
           term: { active: true }
 
@@ -37,7 +37,7 @@ steps:
               - range: { timestamp: { gte: now, lte: now+24h } }
         aggs:
           by_cluster:
-            terms: { field: partition_field_value, size: 10 }
+            terms: { field: partition_field_value, size: 32 }
             aggs:
               peak: { max: { field: forecast_prediction } }
 
@@ -56,7 +56,7 @@ steps:
               - range: { timestamp: { gte: now, lte: now+24h } }
         aggs:
           by_cluster:
-            terms: { field: partition_field_value, size: 10 }
+            terms: { field: partition_field_value, size: 32 }
             aggs:
               peak: { max: { field: forecast_prediction } }
 
@@ -75,7 +75,7 @@ steps:
               - range: { timestamp: { gte: now, lte: now+24h } }
         aggs:
           by_cluster:
-            terms: { field: partition_field_value, size: 10 }
+            terms: { field: partition_field_value, size: 32 }
             aggs:
               peak: { max: { field: forecast_prediction } }
 
@@ -94,9 +94,15 @@ steps:
               - range: { timestamp: { gte: now, lte: now+24h } }
         aggs:
           by_cluster:
-            terms: { field: partition_field_value, size: 10 }
+            terms: { field: partition_field_value, size: 32 }
             aggs:
               peak: { max: { field: forecast_prediction } }
+
+  - name: routing_config
+    type: elasticsearch.request
+    with:
+      method: GET
+      path: /cpm-routing-config/_doc/_global
 
   # --- Transform: base sub-scores per cluster ------------------------------
   - name: build_scores
@@ -118,7 +124,7 @@ steps:
         shard_score: >-
           {%- assign b = steps.shard_forecast.output.aggregations.by_cluster.buckets | where: 'key', item._source.cluster_uuid | first -%}
           {%- assign v = 0 -%}{%- if b and b.peak.value -%}{%- assign v = b.peak.value -%}{%- endif -%}
-          {%- assign sm = item._source.shard_max_threshold | plus: 0 -%}
+          {%- assign sm = steps.routing_config.output._source.shard_max_threshold | default: 1000 | plus: 0 -%}
           {%- if sm > 0 -%}{{ v | times: 100.0 | divided_by: sm | round: 4 }}{%- else -%}0{%- endif -%}
         write_queue_forecast: >-
           {%- assign b = steps.load_forecast.output.aggregations.by_cluster.buckets | where: 'key', item._source.cluster_uuid | first -%}
@@ -126,7 +132,7 @@ steps:
         load_score: >-
           {%- assign b = steps.load_forecast.output.aggregations.by_cluster.buckets | where: 'key', item._source.cluster_uuid | first -%}
           {%- assign v = 0 -%}{%- if b and b.peak.value -%}{%- assign v = b.peak.value -%}{%- endif -%}
-          {%- assign qt = item._source.write_queue_threshold | plus: 0 -%}
+          {%- assign qt = steps.routing_config.output._source.write_queue_threshold | default: 200 | plus: 0 -%}
           {%- if qt > 0 -%}{{ v | times: 100.0 | divided_by: qt | round: 4 }}{%- else -%}0{%- endif -%}
 
   # --- Transform: weighted total + alert -----------------------------------
@@ -144,20 +150,29 @@ steps:
         write_queue_forecast: "{{ item.write_queue_forecast }}"
         load_score: "{{ item.load_score }}"
         total_score: >-
-          {%- assign t = item.disk_used_pct_forecast | times: 0.50 -%}
-          {%- assign t = item.jvm_heap_pct_forecast | times: 0.25 | plus: t -%}
-          {%- assign t = item.shard_score | times: 0.05 | plus: t -%}
-          {%- assign t = item.load_score | times: 0.20 | plus: t -%}
+          {%- assign wDisk = steps.routing_config.output._source.weights.disk | default: 0.5 | plus: 0 -%}
+          {%- assign wJvm = steps.routing_config.output._source.weights.jvm | default: 0.25 | plus: 0 -%}
+          {%- assign wShard = steps.routing_config.output._source.weights.shard | default: 0.05 | plus: 0 -%}
+          {%- assign wLoad = steps.routing_config.output._source.weights.load | default: 0.2 | plus: 0 -%}
+          {%- assign t = item.disk_used_pct_forecast | times: wDisk -%}
+          {%- assign t = item.jvm_heap_pct_forecast | times: wJvm | plus: t -%}
+          {%- assign t = item.shard_score | times: wShard | plus: t -%}
+          {%- assign t = item.load_score | times: wLoad | plus: t -%}
           {{ t | round: 4 }}
         alert: >-
-          {%- assign t = item.disk_used_pct_forecast | times: 0.50 -%}
-          {%- assign t = item.jvm_heap_pct_forecast | times: 0.25 | plus: t -%}
-          {%- assign t = item.shard_score | times: 0.05 | plus: t -%}
-          {%- assign t = item.load_score | times: 0.20 | plus: t -%}
-          {%- if t > 80.0 -%}true{%- else -%}false{%- endif -%}
+          {%- assign alertAt = steps.routing_config.output._source.alert_threshold | default: 80 | plus: 0 -%}
+          {%- assign wDisk = steps.routing_config.output._source.weights.disk | default: 0.5 | plus: 0 -%}
+          {%- assign wJvm = steps.routing_config.output._source.weights.jvm | default: 0.25 | plus: 0 -%}
+          {%- assign wShard = steps.routing_config.output._source.weights.shard | default: 0.05 | plus: 0 -%}
+          {%- assign wLoad = steps.routing_config.output._source.weights.load | default: 0.2 | plus: 0 -%}
+          {%- assign t = item.disk_used_pct_forecast | times: wDisk -%}
+          {%- assign t = item.jvm_heap_pct_forecast | times: wJvm | plus: t -%}
+          {%- assign t = item.shard_score | times: wShard | plus: t -%}
+          {%- assign t = item.load_score | times: wLoad | plus: t -%}
+          {%- if t > alertAt -%}true{%- else -%}false{%- endif -%}
         scored_at: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
         recorded_at: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
-        forecast_horizon_hours: 24
+        forecast_horizon_hours: "{{ steps.routing_config.output._source.forecast_horizon_hours | default: 24 }}"
 
   # --- Write: one scores document ------------------------------------------
   - name: write_scores
@@ -167,13 +182,13 @@ steps:
       path: /cpmw-scores/_doc
       body:
         scored_at: "{{ now | date: '%Y-%m-%dT%H:%M:%S.%LZ' }}"
-        forecast_horizon_hours: 24
-        alert_threshold: 80
+        forecast_horizon_hours: "{{ steps.routing_config.output._source.forecast_horizon_hours | default: 24 }}"
+        alert_threshold: "{{ steps.routing_config.output._source.alert_threshold | default: 80 }}"
         weights_applied:
-          disk: 0.5
-          jvm: 0.25
-          shard: 0.05
-          load: 0.2
+          disk: "{{ steps.routing_config.output._source.weights.disk | default: 0.5 }}"
+          jvm: "{{ steps.routing_config.output._source.weights.jvm | default: 0.25 }}"
+          shard: "{{ steps.routing_config.output._source.weights.shard | default: 0.05 }}"
+          load: "{{ steps.routing_config.output._source.weights.load | default: 0.2 }}"
         clusters: "${{ steps.build_final.output }}"
 
   # --- Write: per-cluster dashboard scores ---------------------------------

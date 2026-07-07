@@ -1,7 +1,7 @@
 {
   "attributes": {
     "title": "Navigation",
-    "visState": "{\"title\": \"Navigation\", \"type\": \"markdown\", \"aggs\": [], \"params\": {\"fontSize\": 14, \"openLinksInNewTab\": true, \"markdown\": \"## CPM dashboards\\n\\n- [CPM \\u2014 Platform overview](/app/dashboards#/view/cpm-platform-overview)\\n- **CPM \\u2014 Current pipeline assignments** (this page)\\n- [CPM \\u2014 Pipeline assignment history](/app/dashboards#/view/cpm-pipeline-history)\\n- [CPM \\u2014 Stream locks](/app/dashboards#/view/cpm-stream-locks)\\n\"}}",
+    "visState": "{\"title\": \"Navigation\", \"type\": \"markdown\", \"aggs\": [], \"params\": {\"fontSize\": 14, \"openLinksInNewTab\": false, \"markdown\": \"[Platform overview](/app/dashboards#/view/cpm-platform-overview) | **Current pipeline assignments** | [Pipeline assignment history](/app/dashboards#/view/cpm-pipeline-history) | [Stream locks](/app/dashboards#/view/cpm-stream-locks)\"}}",
     "uiStateJSON": "{}",
     "description": "",
     "kibanaSavedObjectMeta": {

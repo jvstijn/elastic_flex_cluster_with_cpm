@@ -52,6 +52,15 @@
       "alert_threshold": {
         "type": "float"
       },
+      "write_queue_threshold": {
+        "type": "float"
+      },
+      "shard_max_threshold": {
+        "type": "float"
+      },
+      "kafka_group_id": {
+        "type": "keyword"
+      },
       "forecast_horizon_hours": {
         "type": "integer"
       },

@@ -1,0 +1,30 @@
+{
+  "attributes": {
+    "title": "Scoring weights",
+    "description": "",
+    "columns": [
+      "weights.disk",
+      "weights.jvm",
+      "weights.shard",
+      "weights.load",
+      "alert_threshold",
+      "forecast_horizon_hours"
+    ],
+    "sort": [
+      [
+        "_id",
+        "asc"
+      ]
+    ],
+    "kibanaSavedObjectMeta": {
+      "searchSourceJSON": "{\"query\": {\"query\": \"config_type : scoring_weights\", \"language\": \"kuery\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
+    }
+  },
+  "references": [
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-routing-config"
+    }
+  ]
+}

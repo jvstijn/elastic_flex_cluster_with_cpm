@@ -11,7 +11,8 @@
           "cpm-scoring",
           "cpm-routing-advisor",
           "cpm-state-manager",
-          "cpm-pipeline-manager"
+          "cpm-pipeline-manager",
+          "cpm-stream-coverage"
         ]
       }
     }

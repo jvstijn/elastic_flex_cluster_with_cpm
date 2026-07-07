@@ -57,6 +57,34 @@
         status_code: [200]
       register: es_monitoring
 
+    - name: Probe legacy es-7 monitoring (should be unused)
+      ansible.builtin.uri:
+        url: "{{ elastic_base_url }}/.monitoring-es-7-*/_count"
+        method: POST
+        user: "{{ elastic_usr }}"
+        password: "{{ elastic_pw }}"
+        force_basic_auth: true
+        validate_certs: "{{ cpm_validate_certs }}"
+        body_format: json
+        body:
+          query:
+            range:
+              "@timestamp":
+                gte: now-1d
+        status_code: [200]
+      register: es_monitoring_legacy
+      failed_when: false
+
+    - name: Require Metricbeat es-8 monitoring data
+      ansible.builtin.assert:
+        that:
+          - (es_monitoring.json.hits.total.value | default(es_monitoring.json.hits.total)) | int > 0
+        fail_msg: >-
+          No documents in {{ cpm_monitoring_index }} (last 24h).
+          CPM requires Metricbeat stack monitoring, not legacy internal collection (.monitoring-es-7-*).
+          On imr-dod-vm: cd ~/DoD/docker/reference && ./scripts/enable_stack_monitoring.sh
+          Legacy es-7 docs (24h): {{ es_monitoring_legacy.json.count | default(0) }}
+
     - name: Elasticsearch Watcher API
       ansible.builtin.uri:
         url: "{{ elastic_base_url }}/_watcher/stats"

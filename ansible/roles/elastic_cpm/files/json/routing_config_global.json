@@ -6,6 +6,9 @@
     "shard": 0.05,
     "load": 0.2
   },
+  "write_queue_threshold": 200,
+  "shard_max_threshold": 1000,
+  "kafka_group_id": "cpm-ingest",
   "alert_threshold": 80,
   "forecast_horizon_hours": 24
 }

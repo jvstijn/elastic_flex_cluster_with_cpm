@@ -1,7 +1,7 @@
 {
   "attributes": {
     "title": "About",
-    "visState": "{\"title\": \"About\", \"type\": \"markdown\", \"aggs\": [], \"params\": {\"fontSize\": 14, \"openLinksInNewTab\": true, \"markdown\": \"Snapshots of `cpm-pipeline-state` over time. **Moves** shows rows where `move_detected` is true.\\n\"}}",
+    "visState": "{\"title\": \"About\", \"type\": \"markdown\", \"aggs\": [], \"params\": {\"fontSize\": 14, \"openLinksInNewTab\": false, \"markdown\": \"Snapshots of `cpm-pipeline-state` over time. **Moves** shows rows where `move_detected` is true.\\n\"}}",
     "uiStateJSON": "{}",
     "description": "",
     "kibanaSavedObjectMeta": {

@@ -20,6 +20,20 @@
   loop_control:
     label: "{{ item.name }}"
 
+- name: Apply CPMW pipeline-state index settings
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpmw-pipeline-state/_settings"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      index:
+        max_result_window: 16384
+    status_code: [200, 404]
+
 - name: Index CPMW pipeline templates
   ansible.builtin.uri:
     url: "{{ elastic_base_url }}/cpmw-pipeline-templates/_doc/{{ item.id }}"

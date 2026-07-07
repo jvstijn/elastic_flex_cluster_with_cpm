@@ -2,7 +2,7 @@
   "attributes": {
     "title": "CPM \u2014 Current pipeline assignments",
     "description": "CPM \u2014 Current pipeline assignments",
-    "panelsJSON": "[{\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 0, \"w\": 48, \"h\": 6, \"i\": \"8d57245f-19d3-53c0-b83c-51920921ad0a\"}, \"panelIndex\": \"8d57245f-19d3-53c0-b83c-51920921ad0a\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_0\"}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 6, \"w\": 48, \"h\": 4, \"i\": \"2c4af50b-bd55-5b69-9f6f-3e224754063f\"}, \"panelIndex\": \"2c4af50b-bd55-5b69-9f6f-3e224754063f\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_1\"}, {\"version\": \"8.19.0\", \"type\": \"search\", \"gridData\": {\"x\": 0, \"y\": 10, \"w\": 48, \"h\": 28, \"i\": \"5d118d96-43dc-57df-a8ee-8feddc87e1a2\"}, \"panelIndex\": \"5d118d96-43dc-57df-a8ee-8feddc87e1a2\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_2\"}]",
+    "panelsJSON": "[{\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 0, \"w\": 48, \"h\": 4, \"i\": \"8d57245f-19d3-53c0-b83c-51920921ad0a\"}, \"panelIndex\": \"8d57245f-19d3-53c0-b83c-51920921ad0a\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_0\"}, {\"version\": \"8.19.0\", \"type\": \"control_group\", \"gridData\": {\"x\": 0, \"y\": 4, \"w\": 48, \"h\": 6, \"i\": \"2c4af50b-bd55-5b69-9f6f-3e224754063f\"}, \"panelIndex\": \"2c4af50b-bd55-5b69-9f6f-3e224754063f\", \"embeddableConfig\": {\"controlGroupInput\": {\"chainingSystem\": \"NONE\", \"controlStyle\": \"oneLine\", \"showApplySelections\": false, \"ignoreParentSettingsJSON\": \"{\\\"ignoreFilters\\\": false, \\\"ignoreQuery\\\": false, \\\"ignoreTimerange\\\": true, \\\"ignoreValidations\\\": false}\", \"controls\": [{\"id\": \"c36b1db7-91a1-58ad-881d-d06d294dce7c\", \"type\": \"optionsListControl\", \"order\": 0, \"grow\": true, \"width\": \"large\", \"controlConfig\": {\"dataViewId\": \"cpm-dv-pipeline-state\", \"fieldName\": \"topic\", \"title\": \"Topic\", \"searchTechnique\": \"wildcard\", \"sort\": {\"by\": \"_count\", \"direction\": \"desc\"}, \"selectedOptions\": [], \"enhancements\": {}}}, {\"id\": \"119436d0-57b5-5472-b61e-5e52830d62f5\", \"type\": \"optionsListControl\", \"order\": 1, \"grow\": true, \"width\": \"large\", \"controlConfig\": {\"dataViewId\": \"cpm-dv-pipeline-state\", \"fieldName\": \"pipeline_id\", \"title\": \"Pipeline ID\", \"searchTechnique\": \"wildcard\", \"sort\": {\"by\": \"_count\", \"direction\": \"desc\"}, \"selectedOptions\": [], \"enhancements\": {}}}, {\"id\": \"9a258507-91f0-51ce-8c1d-988e1c85d2ad\", \"type\": \"optionsListControl\", \"order\": 2, \"grow\": true, \"width\": \"medium\", \"controlConfig\": {\"dataViewId\": \"cpm-dv-pipeline-state\", \"fieldName\": \"dataset\", \"title\": \"Dataset\", \"searchTechnique\": \"wildcard\", \"sort\": {\"by\": \"_count\", \"direction\": \"desc\"}, \"selectedOptions\": [], \"enhancements\": {}}}]}}}, {\"version\": \"8.19.0\", \"type\": \"visualization\", \"gridData\": {\"x\": 0, \"y\": 10, \"w\": 48, \"h\": 4, \"i\": \"5d118d96-43dc-57df-a8ee-8feddc87e1a2\"}, \"panelIndex\": \"5d118d96-43dc-57df-a8ee-8feddc87e1a2\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_1\"}, {\"version\": \"8.19.0\", \"type\": \"search\", \"gridData\": {\"x\": 0, \"y\": 14, \"w\": 48, \"h\": 28, \"i\": \"3dd9008b-b328-5aa5-ae65-4e9fe430466f\"}, \"panelIndex\": \"3dd9008b-b328-5aa5-ae65-4e9fe430466f\", \"embeddableConfig\": {}, \"panelRefName\": \"panel_2\"}]",
     "optionsJSON": "{\"useMargins\": true, \"syncColors\": false, \"syncCursor\": true, \"syncTooltips\": false, \"hidePanelTitles\": false}",
     "version": 1,
     "timeRestore": false,
@@ -13,7 +13,7 @@
       "value": 0
     },
     "kibanaSavedObjectMeta": {
-      "searchSourceJSON": "{\"query\": {\"language\": \"kuery\", \"query\": \"\"}, \"filter\": []}"
+      "searchSourceJSON": "{\"query\": {\"language\": \"kuery\", \"query\": \"\"}, \"filter\": [], \"indexRefName\": \"kibanaSavedObjectMeta:indexPattern\"}"
     }
   },
   "references": [
@@ -21,6 +21,21 @@
       "name": "panel_0",
       "type": "visualization",
       "id": "cpm-vis-nav-assignments"
+    },
+    {
+      "name": "controlGroup_c36b1db7-91a1-58ad-881d-d06d294dce7c:optionsListDataView",
+      "type": "index-pattern",
+      "id": "cpm-dv-pipeline-state"
+    },
+    {
+      "name": "controlGroup_119436d0-57b5-5472-b61e-5e52830d62f5:optionsListDataView",
+      "type": "index-pattern",
+      "id": "cpm-dv-pipeline-state"
+    },
+    {
+      "name": "controlGroup_9a258507-91f0-51ce-8c1d-988e1c85d2ad:optionsListDataView",
+      "type": "index-pattern",
+      "id": "cpm-dv-pipeline-state"
     },
     {
       "name": "panel_1",
@@ -31,6 +46,11 @@
       "name": "panel_2",
       "type": "search",
       "id": "cpm-search-pipeline-state"
+    },
+    {
+      "name": "kibanaSavedObjectMeta:indexPattern",
+      "type": "index-pattern",
+      "id": "cpm-dv-pipeline-state"
     }
   ]
 }
