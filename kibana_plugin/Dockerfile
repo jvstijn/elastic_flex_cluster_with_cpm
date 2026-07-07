@@ -14,10 +14,10 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /kibana
 RUN git clone --depth 1 --branch "v${KIBANA_VERSION}" https://github.com/elastic/kibana.git .
-RUN corepack enable && yarn kbn bootstrap --skip-os-packages --allow-root
+RUN corepack enable \
+  && corepack prepare yarn@1.22.21 --activate \
+  && yarn kbn bootstrap --skip-os-packages --allow-root
 COPY cpm /kibana/plugins/cpm
-RUN chown -R node:node /kibana
-USER node
 WORKDIR /kibana/plugins/cpm
 RUN yarn build
 

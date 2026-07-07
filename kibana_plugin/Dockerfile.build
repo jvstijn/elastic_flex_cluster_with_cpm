@@ -17,17 +17,15 @@ RUN apt-get update \
 
 WORKDIR /kibana
 RUN git clone --depth 1 --branch "v${KIBANA_VERSION}" https://github.com/elastic/kibana.git .
-RUN corepack enable && yarn kbn bootstrap --skip-os-packages --allow-root
+# Bootstrap and plugin build both as root — avoids corepack re-downloading Yarn for USER node.
+RUN corepack enable \
+  && corepack prepare yarn@1.22.21 --activate \
+  && yarn kbn bootstrap --skip-os-packages --allow-root
 
 COPY cpm /kibana/plugins/cpm
-RUN chown -R node:node /kibana
-
-USER node
 WORKDIR /kibana/plugins/cpm
 RUN yarn build
 
-USER root
-RUN mkdir -p /output && chown node:node /output
-USER node
+RUN mkdir -p /output
 
 ENTRYPOINT ["sh", "-c", "cp \"/kibana/plugins/cpm/build/cpm-${KIBANA_VERSION}.zip\" /output/ && ls -la \"/output/cpm-${KIBANA_VERSION}.zip\""]
