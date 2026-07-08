@@ -107,6 +107,16 @@ ls -la build/cpm-8.19.16.zip
 
 First `docker build` is slow (~15–20 min); Docker layer cache speeds up rebuilds when only `cpm/` source changes.
 
+Playwright browser downloads are skipped (`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`) — not needed for plugin zips.
+
+Bootstrap runs `yarn kbn build-shared` to warm Moon/webpack shared deps (avoids `system_toolchain.wasm` download failures during `yarn build`). Builds retry up to 5 times on transient GitHub 502s.
+
+If bootstrap fails with `ENOTFOUND` / `EAI_AGAIN` on external hosts, fix Docker Desktop DNS (e.g. add `"dns": ["8.8.8.8"]` in Docker Engine settings) and rebuild:
+
+```bash
+docker build --no-cache -f kibana_plugin/Dockerfile.build -t cpm-kibana-plugin-build:8.19.16 kibana_plugin/
+```
+
 | File | Purpose |
 |------|---------|
 | `kibana_plugin/Dockerfile.build` | Clone Kibana, bootstrap, `yarn build`, copy zip to `/output` |
