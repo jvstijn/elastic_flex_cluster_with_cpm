@@ -1,0 +1,18 @@
+{
+  "id": "cpm",
+  "version": "1.0.6",
+  "kibanaVersion": "9.4.2",
+  "owner": {
+    "name": "Elastic Flex CPM",
+    "githubUrl": ""
+  },
+  "description": "Cluster Pipeline Manager — registry, scoring, stream locks, and watcher control",
+  "server": true,
+  "ui": true,
+  "requiredPlugins": [
+    "management",
+    "features"
+  ],
+  "optionalPlugins": [],
+  "requiredBundles": []
+}

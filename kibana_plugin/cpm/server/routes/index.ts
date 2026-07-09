@@ -12,6 +12,19 @@ import {
 import type { RunChainResponse, WatcherRunResult } from '../../common/types';
 import { userCanAccessCpm } from '../lib/check_access';
 
+/**
+ * Kibana 9.x requires every route to declare `security.authz`. CPM authorizes each
+ * request itself against Elasticsearch cluster privileges (see userCanAccessCpm /
+ * denyUnlessCpmAccess), so opt out of Kibana's built-in authorization here.
+ */
+const CPM_ROUTE_SECURITY = {
+  authz: {
+    enabled: false,
+    reason:
+      'CPM authorizes each request via Elasticsearch _has_privileges (monitor/manage/manage_pipeline/manage_logstash_pipelines).',
+  },
+} as const;
+
 /** ES index mappings are strict; never persist Kibana/API metadata fields like `id`. */
 function withoutApiMeta<T extends Record<string, unknown>>(body: T): Omit<T, 'id'> {
   const { id: _id, ...rest } = body;
@@ -49,13 +62,13 @@ async function runWatcher(
 }
 
 export function defineRoutes(router: IRouter) {
-  router.get({ path: '/api/cpm/access', validate: false }, async (context, _request, response) => {
+  router.get({ path: '/api/cpm/access', validate: false, security: CPM_ROUTE_SECURITY }, async (context, _request, response) => {
     const esClient = (await context.core).elasticsearch.client.asCurrentUser;
     const allowed = await userCanAccessCpm(esClient);
     return response.ok({ body: { allowed } });
   });
 
-  router.get({ path: '/api/cpm/clusters', validate: false }, async (context, _request, response) => {
+  router.get({ path: '/api/cpm/clusters', validate: false, security: CPM_ROUTE_SECURITY }, async (context, _request, response) => {
     const denied = await denyUnlessCpmAccess(context, response);
     if (denied) return denied;
 
@@ -81,6 +94,7 @@ export function defineRoutes(router: IRouter) {
   router.put(
     {
       path: '/api/cpm/clusters/{clusterId}',
+      security: CPM_ROUTE_SECURITY,
       validate: {
         params: schema.object({ clusterId: schema.string() }),
         body: schema.object({}, { unknowns: 'allow' }),
@@ -121,7 +135,7 @@ export function defineRoutes(router: IRouter) {
   );
 
   router.get(
-    { path: '/api/cpm/scoring', validate: false },
+    { path: '/api/cpm/scoring', validate: false, security: CPM_ROUTE_SECURITY },
     async (context, _request, response) => {
       const denied = await denyUnlessCpmAccess(context, response);
       if (denied) return denied;
@@ -140,7 +154,7 @@ export function defineRoutes(router: IRouter) {
     }
   );
 
-  router.put({ path: '/api/cpm/scoring', validate: {
+  router.put({ path: '/api/cpm/scoring', security: CPM_ROUTE_SECURITY, validate: {
     body: schema.object({
       weights: schema.object({}, { unknowns: 'allow' }),
       write_queue_threshold: schema.number(),
@@ -190,7 +204,7 @@ export function defineRoutes(router: IRouter) {
     }
   });
 
-  router.get({ path: '/api/cpm/locks', validate: false }, async (context, _request, response) => {
+  router.get({ path: '/api/cpm/locks', validate: false, security: CPM_ROUTE_SECURITY }, async (context, _request, response) => {
     const denied = await denyUnlessCpmAccess(context, response);
     if (denied) return denied;
 
@@ -216,6 +230,7 @@ export function defineRoutes(router: IRouter) {
   router.put(
     {
       path: '/api/cpm/locks/{lockId}',
+      security: CPM_ROUTE_SECURITY,
       validate: {
         params: schema.object({ lockId: schema.string() }),
         body: schema.object({}, { unknowns: 'allow' }),
@@ -256,6 +271,7 @@ export function defineRoutes(router: IRouter) {
   router.delete(
     {
       path: '/api/cpm/locks/{lockId}',
+      security: CPM_ROUTE_SECURITY,
       validate: {
         params: schema.object({ lockId: schema.string() }),
       },
@@ -283,6 +299,7 @@ export function defineRoutes(router: IRouter) {
   router.post(
     {
       path: '/api/cpm/run',
+      security: CPM_ROUTE_SECURITY,
       validate: {
         body: schema.object({
           watchers: schema.maybe(schema.arrayOf(schema.string())),
