@@ -1,7 +1,7 @@
 {
   "id": "cpm",
   "version": "1.0.6",
-  "kibanaVersion": "9.4.2",
+  "kibanaVersion": "9.4.1",
   "owner": {
     "name": "Elastic Flex CPM",
     "githubUrl": ""

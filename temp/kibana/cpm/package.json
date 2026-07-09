@@ -8,7 +8,7 @@
     "dev": "node ../../scripts/plugin_helpers dev"
   },
   "kibana": {
-    "version": "9.4.2",
+    "version": "9.4.1",
     "templateVersion": "1.0.0"
   }
 }
