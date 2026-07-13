@@ -269,6 +269,7 @@ services:
       - certs:/usr/share/logstash/config/certs
       - ./config/logstash-beats/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
       - ./config/logstash-beats/pipeline:/usr/share/logstash/pipeline:ro
+      - ./config/logstash-beats/valid_topics.yml:/usr/share/logstash/config/valid_topics.yml:ro
     ports:
       - "${LOGSTASH_BEATS_PORT}:5044"
     env_file: .env
