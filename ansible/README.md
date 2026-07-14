@@ -7,7 +7,7 @@ Installs the full Cluster Pipeline Manager stack on **es-central** via the Elast
 | Inventory | Use case |
 |-----------|----------|
 | `inventories/kaposi` **(default)** | imr-dod-vm reference stack via public nginx (`central.kaposi.net`, `cpm.kaposi.net`) |
-| `inventories/local` | Jan 3-cluster docker-compose demo on localhost |
+| `inventories/local` | 3-cluster demo — `Jan/docker-local` + Ansible on localhost |
 
 Default in `ansible.cfg` is **kaposi**. Override:
 
@@ -158,13 +158,13 @@ Already-running datafeeds are left alone. After an Elasticsearch restart or a fa
 
 **`cpm-stream-coverage`** runs five minutes after pipeline-manager. It:
 
-1. Reads Stack Monitoring index stats (24h window) per cluster and backing index
-2. Treats a stream as active when `index_total` increased over the window
+1. Reads Stack Monitoring index stats (**1h window**) per cluster and backing index
+2. Treats a stream as active when `index_total` increased in that window; stores the delta as `writes_detected`
 3. Maps each backing index to a data-stream name and Kafka topic (`logs-dataset-ns`, or `filebeat`)
 4. Loads topic lists from `GET /_logstash/pipeline` and optional `cpm-pipeline-state`
-5. Clears `cpm-stream-coverage`, then bulk-indexes one document per `{cluster_id}|{stream_key}`
+5. Clears `cpm-stream-coverage`, then bulk-indexes one document per `{cluster_id}|{type|dataset|namespace}`
 
-Dashboard panels on **Platform Overview** (`cpm-search-stream-coverage`, managed/unmanaged metrics) read this index. They stay empty until this watcher runs (bootstrap executes it after pipeline-manager). For ad-hoc checks on a single cluster, use `scripts/check_index_pipeline_coverage.py`.
+Dashboard panels on **Platform Overview** (`cpm-search-stream-coverage`, managed/unmanaged metrics) read this index. Each run reflects **writes in the hour before execution** (daily at 00:25 UTC, or manual). They stay empty until this watcher runs (bootstrap executes it after pipeline-manager). For ad-hoc checks on a single cluster, use `scripts/check_index_pipeline_coverage.py`.
 
 Manual run:
 
@@ -216,7 +216,7 @@ cd ../kibana_plugin && docker build -t kibana-cpm:8.19.16 .
 
 UI path: **Stack Management → Ingest → Cluster Pipeline Manager**
 
-Requires a Kibana user with read/write on `cpm-cluster-registry` and `cpm-routing-config`, plus `manage_watcher` for the Run CPM tab.
+Requires a Kibana user with read/write on `cpm-cluster-registry` and `cpm-routing-config`, plus `manage_watcher` for the Run CPM tab. The management UI itself requires any of the cluster privileges `monitor`, `manage`, `manage_pipeline`, or `manage_logstash_pipelines`.
 
 ## Required Elasticsearch privileges
 

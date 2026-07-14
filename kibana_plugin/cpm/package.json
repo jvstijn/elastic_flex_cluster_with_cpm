@@ -1,6 +1,6 @@
 {
   "name": "cpm",
-  "version": "1.0.3",
+  "version": "1.0.6",
   "private": true,
   "scripts": {
     "build": "node ../../scripts/plugin_helpers build",
@@ -8,7 +8,7 @@
     "dev": "node ../../scripts/plugin_helpers dev"
   },
   "kibana": {
-    "version": "8.19.16",
+    "version": "9.4.2",
     "templateVersion": "1.0.0"
   }
 }

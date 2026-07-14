@@ -69,6 +69,32 @@
           }
         },
         {
+          "scores": {
+            "search": {
+              "request": {
+                "search_type": "query_then_fetch",
+                "indices": [
+                  "cpm-scores"
+                ],
+                "rest_total_hits_as_int": true,
+                "body": {
+                  "size": 1,
+                  "sort": [
+                    {
+                      "scored_at": {
+                        "order": "desc"
+                      }
+                    }
+                  ],
+                  "_source": [
+                    "clusters"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
           "dataset_rates": {
             "search": {
               "request": {

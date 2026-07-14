@@ -5,8 +5,8 @@ Seeds templates, syncs registry, patches ingest_hosts/dc, runs the full watcher
 chain, and removes the bootstrap kafka-to-central pipeline.
 
 Usage:
-    python3 docker/scripts/bootstrap_cpm_pipelines.py
-    python3 docker/scripts/bootstrap_cpm_pipelines.py --settings cpm/cpm_settings.json
+    python3 Jan/docker-local/scripts/bootstrap_cpm_pipelines.py
+    python3 Jan/docker-local/scripts/bootstrap_cpm_pipelines.py --settings cpm/cpm_settings.json
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import requests
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SETTINGS = ROOT / "cpm" / "cpm_settings.json"
 DEFAULT_CONFIGS = ROOT / "cpm" / "cpm_configs.json"
 DEFAULT_CA = ROOT / "cpm" / "docker-ca.crt"

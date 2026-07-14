@@ -1,24 +1,25 @@
 {
   "attributes": {
-    "title": "Stream coverage per cluster",
+    "title": "CPM detected data streams with writes (last hour)",
     "description": "",
     "columns": [
       "cluster_name",
-      "index_name",
-      "stream_key",
-      "topic",
+      "data_stream_type",
+      "dataset",
+      "namespace",
+      "writes_detected",
       "cpm_managed",
-      "management_status",
       "pipeline_id",
+      "topic",
       "recorded_at"
     ],
     "sort": [
       [
-        "cluster_name",
-        "asc"
+        "writes_detected",
+        "desc"
       ],
       [
-        "index_name",
+        "cluster_name",
         "asc"
       ]
     ],

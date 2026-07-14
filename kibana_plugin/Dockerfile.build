@@ -1,0 +1,55 @@
+# Build CPM Kibana plugin zip only (artifact on host via volume mount).
+#
+#   docker build -f Dockerfile.build -t cpm-kibana-plugin-build:8.19.16 .
+#   docker run --rm -v "$(pwd)/build:/output" cpm-kibana-plugin-build:8.19.16
+#
+# Or use: ../scripts/build_kibana_cpm_plugin_docker.sh
+
+ARG KIBANA_VERSION=8.19.16
+
+FROM node:22.22.2-bookworm-slim
+ARG KIBANA_VERSION
+ENV KIBANA_VERSION=${KIBANA_VERSION}
+# Shared HOME so Moon toolchain WASM (downloaded during bootstrap) is reused by USER node.
+ENV HOME=/opt/moon-home
+# Plugin zip builds do not need Playwright browsers; skip ~300MB downloads during bootstrap.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    CI=true
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git python3 build-essential ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /kibana
+RUN git clone --depth 1 --branch "v${KIBANA_VERSION}" https://github.com/elastic/kibana.git .
+RUN mkdir -p /opt/moon-home
+# Bootstrap + shared webpack bundles as root (--allow-root).
+# build-shared warms Moon plugins (system_toolchain.wasm) before plugin yarn build.
+RUN corepack enable \
+  && corepack prepare yarn@1.22.21 --activate \
+  && yarn kbn bootstrap --skip-os-packages --allow-root \
+  && for attempt in 1 2 3 4 5; do \
+       yarn kbn build-shared --quiet --dist --allow-root && break; \
+       if [ "$attempt" -eq 5 ]; then exit 1; fi; \
+       echo "build-shared attempt ${attempt} failed, retrying in 20s..."; \
+       sleep 20; \
+     done
+
+COPY cpm /kibana/plugins/cpm
+RUN chown -R node:node /kibana /opt/moon-home \
+  && su node -s /bin/sh -c "corepack enable && corepack prepare yarn@1.22.21 --activate"
+
+# Plugin build as node (kbn build-shared rejects root). Retry on transient GitHub 502s for Moon.
+USER node
+WORKDIR /kibana/plugins/cpm
+RUN for attempt in 1 2 3 4 5; do \
+      yarn build && break; \
+      if [ "$attempt" -eq 5 ]; then exit 1; fi; \
+      echo "yarn build attempt ${attempt} failed, retrying in 20s..."; \
+      sleep 20; \
+    done
+
+USER root
+RUN mkdir -p /output
+
+ENTRYPOINT ["sh", "-c", "cp \"/kibana/plugins/cpm/build/cpm-${KIBANA_VERSION}.zip\" /output/ && ls -la \"/output/cpm-${KIBANA_VERSION}.zip\""]

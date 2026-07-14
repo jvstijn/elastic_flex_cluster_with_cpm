@@ -1,5 +1,5 @@
 ---
-cpm_env_file: "{{ playbook_dir }}/../.env"
+cpm_env_file: "{{ playbook_dir }}/../docker-local/.env"
 
 elastic_usr: elastic
 elastic_pw: "{{ lookup('ini', 'ELASTIC_PASSWORD type=properties file=' ~ cpm_env_file) }}"

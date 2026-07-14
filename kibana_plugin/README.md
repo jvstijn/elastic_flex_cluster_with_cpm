@@ -1,137 +1,162 @@
 # CPM Kibana plugin
 
-Management UI under **Stack Management → Ingest → Cluster Pipeline Manager**.
-
-Targets Kibana **8.19.16** (must match the Kibana version on the host — e.g. `STACK_VERSION` in `docker/reference`).
-
-## Features
+Management UI: **Stack Management → Ingest → Cluster Pipeline Manager**.
 
 | Tab | Index / API | Action |
 |-----|-------------|--------|
-| **Clusters** | `cpm-cluster-registry` | Enable/disable clusters (`active` flag) |
-| **Scoring weights** | `cpm-routing-config/_global` | Edit disk / jvm / shard / load weights, alert threshold |
-| **Stream locks** | `cpm-routing-config` (`stream_lock`) | Wizard to add locks; delete; apply state+pipeline managers |
-| **Run CPM** | `/_watcher/watch/*/_execute` | Run full watcher chain or individual watchers |
+| **Clusters** | `cpm-cluster-registry` | Enable/disable clusters (`active`) |
+| **Scoring weights** | `cpm-routing-config/_global` | Disk / JVM / shard / load weights, alert threshold |
+| **Stream locks** | `cpm-routing-config` | Pin streams to clusters |
+| **Run CPM** | `/_watcher/watch/*/_execute` | Run watcher chain or individual watchers |
 
-Watcher chain order (matches Ansible bootstrap):
-
-1. `cpm-registry-sync` (optional: `cpm-forecast-trigger` before scoring)
-2. `cpm-scoring`
-3. `cpm-routing-advisor`
-4. `cpm-state-manager`
-5. `cpm-pipeline-manager`
-6. `cpm-stream-coverage` — refreshes `cpm-stream-coverage` for Platform Overview dashboards
-
-After locks or pipeline changes, run at least `cpm-state-manager` → `cpm-pipeline-manager` → `cpm-stream-coverage` so coverage reflects the current Logstash topic lists.
+Watcher chain: `cpm-registry-sync` → `cpm-scoring` → `cpm-routing-advisor` → `cpm-state-manager` → `cpm-pipeline-manager` → `cpm-stream-coverage`.
 
 ---
 
-## Building the plugin (CI/CD and dedicated Kibana)
+## Build the plugin (step by step)
 
-Kibana plugins are **compiled against a specific Kibana release**. The build does **not** run on the Kibana server itself — a CI/CD agent (or build VM) produces a **zip artifact** that platform ops install on each Kibana node.
+The plugin **must** be compiled against the **exact** Kibana version running in production.  
+Output: `kibana_plugin/build/cpm-<version>.zip` (standard `bin/kibana-plugin install` format).
 
-### Output artifact
+Source lives in `kibana_plugin/cpm/` only.
 
-| Item | Value |
+### Prerequisites
+
+| Tool | Notes |
 |------|--------|
-| **File** | `kibana_plugin/build/cpm-<kibanaVersion>.zip` (e.g. `cpm-8.19.16.zip`) |
-| **Format** | Standard Kibana plugin zip (same as `bin/kibana-plugin install`) |
-| **Source** | `kibana_plugin/cpm/` only — there is no separate npm project at `kibana_plugin/` root |
+| Git | shallow clone of `elastic/kibana` |
+| Node.js **22.x** | e.g. 22.22.2 (`Dockerfile` uses `node:22.22.2-bookworm-slim`) |
+| Corepack + Yarn | `corepack enable` |
+| `python3`, C build tools | `build-essential` on Debian/Ubuntu |
+| ~8 GB disk | first clone + bootstrap |
+| ~8 GB RAM | recommended for `yarn kbn bootstrap` |
 
-Treat the zip as the **release artifact**: publish it from CI (Artifactory, S3, pipeline artifacts, etc.) and install the same build on every Kibana instance in an environment.
+No Kibana process runs on the builder — only the compile toolchain.
 
-### What the build agent needs
+### Step 1 — Pick the Kibana version
 
-Platform engineers should provision build runners with:
+| Target Kibana | Git tag | Zip output |
+|---------------|---------|------------|
+| **8.19.16** (current) | `v8.19.16` | `cpm-8.19.16.zip` |
+| **9.4.3** (example) | `v9.4.3` | `cpm-9.4.3.zip` |
 
-| Requirement | Notes |
-|-------------|--------|
-| **OS** | Linux x86_64 recommended (matches typical Kibana deployments) |
-| **Git** | Shallow clone of `https://github.com/elastic/kibana.git` at tag `v<KIBANA_VERSION>` |
-| **Node.js** | **22.x** (see `kibana_plugin/Dockerfile` — `node:22.22.2`) |
-| **Yarn** | Via **Corepack** (`corepack enable`); Kibana uses its own Yarn version after bootstrap |
-| **Build tools** | `python3`, `build-essential` (or equivalent) — required by Kibana bootstrap native deps |
-| **Disk** | **~8 GB** free for Kibana checkout + `node_modules` (first build); less if cache is warm |
-| **Network** | Outbound HTTPS to `github.com` (Kibana source) and npm registries during bootstrap |
-| **Memory** | **≥ 8 GB RAM** recommended for `yarn kbn bootstrap` |
+When switching versions, update both manifest fields in `cpm/`:
 
-No Kibana process needs to run on the builder — only the compile toolchain.
+- `kibana.json` → `kibanaVersion`
+- `package.json` → `kibana.version`
 
-### Build command
+### Step 2 — Build with the repo script (recommended)
 
-From the repository root (`Jan/elastic_flex_cluster_with_cpm/`):
+From `Jan/elastic_flex_cluster_with_cpm/`:
 
 ```bash
 chmod +x scripts/build_kibana_cpm_plugin.sh
+
+# 8.19.16 (default)
 ./scripts/build_kibana_cpm_plugin.sh
+
+# 9.4.3
+KIBANA_VERSION=9.4.3 ./scripts/build_kibana_cpm_plugin.sh
 ```
 
 The script:
 
 1. Clones Kibana `v${KIBANA_VERSION}` into `.kibana-build/` (or `$KIBANA_DIR`)
 2. Runs `yarn kbn bootstrap --skip-os-packages` once per checkout
-3. Copies `kibana_plugin/cpm` into `plugins/cpm` inside that checkout
+3. Copies `kibana_plugin/cpm` → `plugins/cpm`
 4. Runs `yarn build` in the plugin directory
-5. Copies the resulting zip to `kibana_plugin/build/`
+5. Copies the zip to `kibana_plugin/build/`
 
-### Environment variables (CI/CD)
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `KIBANA_VERSION` | `8.19.16` | Must match target Kibana and `cpm/kibana.json` → `kibanaVersion` |
-| `KIBANA_DIR` | `<repo>/.kibana-build` | Path to Kibana git checkout; **cache this directory** between pipeline runs |
-
-Example pipeline step:
+**Cache between builds** (bootstrap runs only once per version):
 
 ```bash
-export KIBANA_VERSION=8.19.16
-export KIBANA_DIR="${CI_PROJECT_DIR}/.cache/kibana-${KIBANA_VERSION}"
+KIBANA_VERSION=9.4.3 \
+KIBANA_DIR=$HOME/.cache/kibana-9.4.3 \
 ./scripts/build_kibana_cpm_plugin.sh
 ```
 
-**Caching:** Persist `$KIBANA_DIR` and its `node_modules/` between builds. The first run takes several minutes (clone + bootstrap); incremental runs only re-copy plugin sources and rebuild the zip (~1–2 min).
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `KIBANA_VERSION` | `8.19.16` | Must match `cpm/kibana.json` → `kibanaVersion` |
+| `KIBANA_DIR` | `<repo>/.kibana-build` | Kibana git checkout — persist in CI |
 
-**Version bumps:** When upgrading Kibana, update all of:
+Do **not** commit `kibana_plugin/build/` or `.kibana-build/` (gitignored).
 
-- `KIBANA_VERSION` / `STACK_VERSION`
-- `kibana_plugin/cpm/kibana.json` → `kibanaVersion`
-- `kibana_plugin/cpm/package.json` → `kibana.version`
-- Clear or replace the cached `$KIBANA_DIR` for the new tag
+### Step 2b — Build zip in Docker (artifact on host)
 
-### CI/CD pipeline sketch
+No local Node/Yarn/fnm required. Output: `kibana_plugin/build/cpm-<version>.zip`.
 
-```yaml
-# Pseudocode — adapt to GitLab / GitHub Actions / Jenkins
-build-cpm-plugin:
-  image: node:22-bookworm   # or use kibana_plugin/Dockerfile builder stage
-  cache:
-    key: kibana-v8.19.16
-    paths:
-      - .cache/kibana-8.19.16/
-  script:
-    - apt-get update && apt-get install -y git python3 build-essential
-    - export KIBANA_VERSION=8.19.16
-    - export KIBANA_DIR=$CI_PROJECT_DIR/.cache/kibana-8.19.16
-    - ./scripts/build_kibana_cpm_plugin.sh
-  artifacts:
-    paths:
-      - kibana_plugin/build/cpm-*.zip
-    expire_in: 30 days
-```
-
-Downstream deploy jobs download the zip and install it on Kibana hosts (see below). Do **not** commit `kibana_plugin/build/` or `.kibana-build/` — both are gitignored.
-
-### Install on a dedicated Kibana machine
-
-After CI publishes `cpm-8.19.16.zip`:
+From `Jan/elastic_flex_cluster_with_cpm/`:
 
 ```bash
-# Copy artifact to the Kibana host, then as root or kibana user:
-sudo -u kibana /usr/share/kibana/bin/kibana-plugin install file:///path/to/cpm-8.19.16.zip
-sudo systemctl restart kibana
+chmod +x scripts/build_kibana_cpm_plugin_docker.sh
+./scripts/build_kibana_cpm_plugin_docker.sh
+
+# other Kibana version
+KIBANA_VERSION=9.4.3 ./scripts/build_kibana_cpm_plugin_docker.sh
 ```
 
-Docker / Compose equivalent:
+Manual equivalent:
+
+```bash
+cd kibana_plugin
+docker build -f Dockerfile.build -t cpm-kibana-plugin-build:8.19.16 .
+docker run --rm -v "$(pwd)/build:/output" cpm-kibana-plugin-build:8.19.16
+ls -la build/cpm-8.19.16.zip
+```
+
+First `docker build` is slow (~15–20 min); Docker layer cache speeds up rebuilds when only `cpm/` source changes.
+
+Playwright browser downloads are skipped (`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`) — not needed for plugin zips.
+
+Bootstrap runs `yarn kbn build-shared` to warm Moon/webpack shared deps (avoids `system_toolchain.wasm` download failures during `yarn build`). Builds retry up to 5 times on transient GitHub 502s.
+
+If bootstrap fails with `ENOTFOUND` / `EAI_AGAIN` on external hosts, fix Docker Desktop DNS (e.g. add `"dns": ["8.8.8.8"]` in Docker Engine settings) and rebuild:
+
+```bash
+docker build --no-cache -f kibana_plugin/Dockerfile.build -t cpm-kibana-plugin-build:8.19.16 kibana_plugin/
+```
+
+| File | Purpose |
+|------|---------|
+| `kibana_plugin/Dockerfile.build` | Clone Kibana, bootstrap, `yarn build`, copy zip to `/output` |
+| `kibana_plugin/Dockerfile` | Same build + bake plugin into `kibana-cpm:<version>` image |
+
+### Step 3 — Build manually (optional)
+
+```bash
+export KIBANA_VERSION=8.19.16   # or 9.4.3
+export KIBANA_DIR=/tmp/kibana-${KIBANA_VERSION}
+export PLUGIN_SRC="$(pwd)/kibana_plugin/cpm"   # from elastic_flex_cluster_with_cpm/
+
+git clone --depth 1 --branch "v${KIBANA_VERSION}" \
+  https://github.com/elastic/kibana.git "${KIBANA_DIR}"
+
+cd "${KIBANA_DIR}"
+corepack enable
+yarn kbn bootstrap --skip-os-packages
+
+rm -rf plugins/cpm
+cp -a "${PLUGIN_SRC}" plugins/cpm
+
+cd plugins/cpm
+yarn build
+
+ls build/cpm-${KIBANA_VERSION}.zip
+```
+
+For **9.4.3**: set `KIBANA_VERSION=9.4.3`, update manifests in Step 1, use a **fresh** `KIBANA_DIR`, fix any 8.x → 9.x API breaks.
+
+### Step 4 — Install the zip
+
+On a Kibana host (version must match the zip):
+
+```bash
+bin/kibana-plugin install file:///path/to/cpm-8.19.16.zip
+# restart Kibana
+```
+
+Docker Compose:
 
 ```bash
 docker compose cp kibana_plugin/build/cpm-8.19.16.zip kibana:/tmp/cpm.zip
@@ -139,54 +164,80 @@ docker compose exec kibana bin/kibana-plugin install file:///tmp/cpm.zip
 docker compose restart kibana
 ```
 
-Verify: **Stack Management → Ingest → Cluster Pipeline Manager** appears after restart.
+Verify: **Stack Management → Ingest → Cluster Pipeline Manager**.
 
-**Rolling upgrades:** Build one zip per Kibana minor version; install the matching zip on each node before or during the Kibana upgrade window. Plugin `kibanaVersion` must exactly match the running Kibana build.
+### Step 5 — Or bake into a Docker image (reference stack)
 
----
-
-## Reference stack: Docker image with plugin baked in
-
-For the local / kaposi reference environment you can bake the plugin into a custom Kibana image instead of installing the zip manually:
+From `kibana_plugin/`:
 
 ```bash
-cd Jan/elastic_flex_cluster_with_cpm/kibana_plugin
+# 8.19.16
 docker build -t kibana-cpm:8.19.16 .
+
+# 9.4.3
+docker build --build-arg KIBANA_VERSION=9.4.3 -t kibana-cpm:9.4.3 .
 ```
 
-Set in `docker/reference/.env`:
+Set `KIBANA_IMAGE=kibana-cpm:8.19.16` in `docker/reference/.env`, then `docker compose up -d kibana`.
 
-```bash
-KIBANA_IMAGE=kibana-cpm:8.19.16
+### Version-bump checklist
+
+1. `cpm/kibana.json` → `kibanaVersion`
+2. `cpm/package.json` → `kibana.version`
+3. Build with matching `KIBANA_VERSION` / git tag `v*`
+4. New or cleared `KIBANA_DIR` for the new version
+5. Resolve compile/API breaks (especially 8.x → 9.x)
+
+### CI/CD sketch
+
+```yaml
+build-cpm-plugin:
+  image: node:22-bookworm
+  cache:
+    key: kibana-v8.19.16
+    paths: [.cache/kibana-8.19.16/]
+  script:
+    - apt-get update && apt-get install -y git python3 build-essential
+    - export KIBANA_VERSION=8.19.16
+    - export KIBANA_DIR=$CI_PROJECT_DIR/.cache/kibana-8.19.16
+    - ./scripts/build_kibana_cpm_plugin.sh
+  artifacts:
+    paths: [kibana_plugin/build/cpm-*.zip]
 ```
-
-Then `docker compose up -d kibana`.
-
-The Dockerfile uses the same Kibana clone + `yarn build` flow as `scripts/build_kibana_cpm_plugin.sh`, then runs `bin/kibana-plugin install` in the final image layer.
 
 ---
 
 ## Permissions
 
-Server routes use `elasticsearch.client.asCurrentUser`. The logged-in Kibana user needs:
+### Nav visibility
+
+Shown when the user has **any** cluster privilege: `monitor`, `manage`, `manage_pipeline`, `manage_logstash_pipelines`.
+
+`kibana_admin` bypasses the Elasticsearch-feature check, so the plugin calls `GET /api/cpm/access` on startup and hides the nav item when cluster privileges are missing.
+
+Not controlled by Space feature toggles.
+
+### Using the UI
+
+Same cluster privilege check on all `/api/cpm/*` routes, plus:
 
 - Read/write on `cpm-cluster-registry`, `cpm-routing-config`
-- `manage_watcher` (or superuser) to execute watchers
-
-The `elastic` superuser satisfies these requirements.
+- `manage_watcher` for the **Run CPM** tab
 
 ---
 
-## Development
+## Local development
 
-For interactive UI work, use an existing Kibana **8.19.16** source checkout:
+Symlink or copy `kibana_plugin/cpm` into `<kibana>/plugins/cpm` in a matching Kibana checkout, then:
 
 ```bash
-export KIBANA_DIR=~/src/kibana   # must be v8.19.16
-./scripts/build_kibana_cpm_plugin.sh
+cd <kibana>/plugins/cpm && yarn dev
+cd <kibana> && yarn start
 ```
 
-For live reload, symlink or copy `kibana_plugin/cpm` into `<kibana>/plugins/cpm`, then run `yarn dev` in the plugin directory and `yarn start` in the Kibana root (see [Elastic external plugin docs](https://www.elastic.co/docs/extend/kibana)).
+See [Elastic Kibana plugin docs](https://www.elastic.co/docs/extend/kibana).
+
+**Note:** `cpm/tsconfig.json` extends Kibana's `tsconfig.base.json` — IDE errors in this repo alone are normal until a Kibana checkout exists (build still works via Step 2).
 
 ---
 
@@ -194,14 +245,15 @@ For live reload, symlink or copy `kibana_plugin/cpm` into `<kibana>/plugins/cpm`
 
 ```
 kibana_plugin/
-  cpm/                 # plugin source (only directory that matters for builds)
-    kibana.json        # plugin manifest (id, kibanaVersion)
-    package.json       # yarn build scripts (uses Kibana's plugin_helpers)
-    public/            # React UI (management ingest section)
-    server/routes/     # /api/cpm/* proxies to Elasticsearch
-    common/            # shared constants and types
-  build/               # output zips (gitignored, CI artifact)
-  Dockerfile           # optional: Kibana image with plugin pre-installed
+  cpm/                 # plugin source
+    kibana.json        # manifest (id, kibanaVersion)
+    package.json       # yarn build via Kibana plugin_helpers
+    public/            # React UI
+    server/routes/     # /api/cpm/*
+    common/
+  build/               # output zips (gitignored)
+  Dockerfile           # optional image with plugin pre-installed
+  Dockerfile.build     # zip-only builder (mount build/ as /output)
 ```
 
-Build script: `scripts/build_kibana_cpm_plugin.sh` (repo root).
+Build scripts: `scripts/build_kibana_cpm_plugin.sh` (native), `scripts/build_kibana_cpm_plugin_docker.sh` (Docker artifact).
