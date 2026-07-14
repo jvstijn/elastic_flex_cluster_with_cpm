@@ -23,7 +23,7 @@
 
 - name: Remove CPM data view by id (idempotent)
   ansible.builtin.uri:
-    url: "{{ kibana_base_url }}/api/data_views/data_view/{{ item.id }}"
+    url: "{{ kibana_url }}/api/data_views/data_view/{{ item.id }}"
     method: DELETE
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
@@ -38,7 +38,7 @@
 
 - name: Find conflicting Kibana data view by title
   ansible.builtin.uri:
-    url: "{{ kibana_base_url }}/api/data_views/data_view/find?title={{ item.title | urlencode }}"
+    url: "{{ kibana_url }}/api/data_views/data_view/find?title={{ item.title | urlencode }}"
     method: GET
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
@@ -54,7 +54,7 @@
 
 - name: Remove conflicting Kibana data view by title
   ansible.builtin.uri:
-    url: "{{ kibana_base_url }}/api/data_views/data_view/{{ item.json.data_view.id }}"
+    url: "{{ kibana_url }}/api/data_views/data_view/{{ item.json.data_view.id }}"
     method: DELETE
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
@@ -73,7 +73,7 @@
 
 - name: Create CPM Kibana data views
   ansible.builtin.uri:
-    url: "{{ kibana_base_url }}/api/data_views/data_view"
+    url: "{{ kibana_url }}/api/data_views/data_view"
     method: POST
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
@@ -93,7 +93,7 @@
 
 - name: Deploy static Kibana visualizations and searches
   ansible.builtin.uri:
-    url: "{{ kibana_base_url }}/api/saved_objects/{{ item.type }}/{{ item.id }}?overwrite=true"
+    url: "{{ kibana_url }}/api/saved_objects/{{ item.type }}/{{ item.id }}?overwrite=true"
     method: POST
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
@@ -154,7 +154,7 @@
 
 - name: Deploy stream locks status markdown visualization
   ansible.builtin.uri:
-    url: "{{ kibana_base_url }}/api/saved_objects/visualization/cpm-vis-stream-locks-status?overwrite=true"
+    url: "{{ kibana_url }}/api/saved_objects/visualization/cpm-vis-stream-locks-status?overwrite=true"
     method: POST
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
@@ -168,7 +168,7 @@
 
 - name: Deploy Kibana dashboards
   ansible.builtin.uri:
-    url: "{{ kibana_base_url }}/api/saved_objects/{{ item.type }}/{{ item.id }}?overwrite=true"
+    url: "{{ kibana_url }}/api/saved_objects/{{ item.type }}/{{ item.id }}?overwrite=true"
     method: POST
     user: "{{ elastic_usr }}"
     password: "{{ elastic_pw }}"
@@ -186,7 +186,7 @@
 - name: Show deployed CPM dashboards
   ansible.builtin.debug:
     msg: >-
-      {{ kibana_base_url }}/app/dashboards#/view/{{ item.id }}
+      {{ kibana_url }}/app/dashboards#/view/{{ item.id }}
   loop:
     - { id: cpm-platform-overview }
     - { id: cpm-pipeline-assignments }
