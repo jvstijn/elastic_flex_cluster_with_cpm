@@ -144,7 +144,393 @@
   },
   "transform": {
     "script": {
-      "source": "// ====== CPM Pipeline Pusher ======\n// Reads state from cpm-pipeline-state, renders pipeline configs, and pushes to Logstash\n\n// JSON-escape helper characters\nString BS  = Character.toString((char)92);\nString DQ  = Character.toString((char)34);\nString NL  = Character.toString((char)10);\nString CR  = Character.toString((char)13);\nString TAB = Character.toString((char)9);\n\nString ts = ctx.execution_time.toString();\n\nString kafkaGroupId = 'cpm-ingest';\nif (ctx.payload.routing_config != null && ctx.payload.routing_config.hits != null && ctx.payload.routing_config.hits.hits.size() > 0) {\n  def rcfg = ctx.payload.routing_config.hits.hits[0]._source;\n  if (rcfg != null && rcfg.kafka_group_id != null && !((String)rcfg.kafka_group_id).isEmpty()) {\n    kafkaGroupId = (String)rcfg.kafka_group_id;\n  }\n}\n\n// Build registry map (active clusters) and pipeline ids to remove (inactive)\nMap registryMap = new HashMap();\nSet inactiveClusterIds = new HashSet();\nSet inactivePipelineIds = new HashSet();\nfor (def hit : ctx.payload.registry.hits.hits) {\n  Map src = hit._source;\n  String cid = (String)src.cluster_id;\n  boolean active = src.active == null || (boolean)src.active;\n  String dc = src.dc != null ? (String)src.dc : 'default';\n  if (!active) {\n    inactiveClusterIds.add(cid);\n    inactivePipelineIds.add(dc + '_cpm-catchall-' + cid);\n    inactivePipelineIds.add(dc + '_cpm-dedicated-' + cid);\n    if (src.cluster_uuid != null) {\n      String cu = (String)src.cluster_uuid;\n      if (!cu.equals(cid)) {\n        inactiveClusterIds.add(cu);\n        inactivePipelineIds.add(dc + '_cpm-catchall-' + cu);\n        inactivePipelineIds.add(dc + '_cpm-dedicated-' + cu);\n      }\n    }\n    continue;\n  }\n  Map m = new HashMap();\n  m.put('cluster_id', cid);\n  m.put('cluster_uuid', (String)src.cluster_uuid);\n  m.put('cluster_name', src.cluster_name != null ? (String)src.cluster_name : '');\n  m.put('ingest_hosts', src.ingest_hosts != null ? (String)src.ingest_hosts : '');\n  m.put('dc', dc);\n  registryMap.put(cid, m);\n}\n\n// Read templates from search results\nString kafkaBootstrap = 'kafka:9092';\nString dedicatedTpl = '';\nlong dedicatedConsumerThreads = 1;\nMap dedicatedSettings = new HashMap();\nif (ctx.payload.template_dedicated.hits.total > 0) {\n  for (def hit : ctx.payload.template_dedicated.hits.hits) {\n    if ('dedicated'.equals((String)hit._id)) {\n      dedicatedTpl = (String)hit._source.template;\n      def ct = hit._source.consumer_threads;\n      if (ct != null) dedicatedConsumerThreads = ct;\n      def kb = hit._source.kafka_bootstrap;\n      if (kb != null) kafkaBootstrap = (String)kb;\n      def ps = hit._source.pipeline_settings;\n      if (ps != null) dedicatedSettings = (Map)ps;\n      break;\n    }\n  }\n}\nString catchallTpl = '';\nlong catchallConsumerThreads = 1;\nMap catchallSettings = new HashMap();\nif (ctx.payload.template_catchall.hits.total > 0) {\n  for (def hit : ctx.payload.template_catchall.hits.hits) {\n    if ('catchall'.equals((String)hit._id)) {\n      catchallTpl = (String)hit._source.template;\n      def ct = hit._source.consumer_threads;\n      if (ct != null) catchallConsumerThreads = ct;\n      def ps = hit._source.pipeline_settings;\n      if (ps != null) catchallSettings = (Map)ps;\n      break;\n    }\n  }\n}\n\n// Group state entries by pipeline_id\nMap pipelineGroups = new HashMap();    // pipeline_id -> List of state entries\nMap pipelineTypes = new HashMap();     // pipeline_id -> 'dedicated' or 'catchall'\nMap pipelineClusters = new HashMap();  // pipeline_id -> cluster_id\nMap pipelineDcs = new HashMap();      // pipeline_id -> dc\n\nfor (def hit : ctx.payload.state.hits.hits) {\n  Map src = hit._source;\n  if (src.data_stream_type == null) continue;\n  String pid = (String)src.pipeline_id;\n  String ptype = (String)src.pipeline_type;\n  String cid = (String)src.cluster_id;\n  String dc = src.dc != null ? (String)src.dc : 'default';\n\n  String cu = src.cluster_uuid != null ? (String)src.cluster_uuid : '';\n  if (inactiveClusterIds.contains(cid)\n      || (!cu.isEmpty() && inactiveClusterIds.contains(cu))) {\n    inactivePipelineIds.add(pid);\n    continue;\n  }\n\n  if (!pipelineGroups.containsKey(pid)) {\n    pipelineGroups.put(pid, new ArrayList());\n    pipelineTypes.put(pid, ptype);\n    pipelineClusters.put(pid, cid);\n    pipelineDcs.put(pid, dc);\n  }\n  ((List)pipelineGroups.get(pid)).add(src);\n}\n\n// Build pipelines\nList pipelines = new ArrayList();\n\nfor (def entry : pipelineGroups.entrySet()) {\n  String pid = (String)entry.getKey();\n  List entries = (List)entry.getValue();\n  String ptype = (String)pipelineTypes.get(pid);\n  String cid = (String)pipelineClusters.get(pid);\n  String dc = (String)pipelineDcs.get(pid);\n\n  Map cluster = (Map)registryMap.get(cid);\n  if (cluster == null) continue;\n  String ingestHosts = (String)cluster.get('ingest_hosts');\n  if (ingestHosts == null || ingestHosts.isEmpty()) continue;\n  String clusterName = (String)cluster.get('cluster_name');\n  if (clusterName == null || clusterName.isEmpty()) clusterName = cid;\n  String groupId = kafkaGroupId;\n\n  String esHostsStr = DQ + ingestHosts.replace(',', ':9200' + DQ + ',' + DQ) + ':9200' + DQ;\n  String apiKeyVar = 'ES_API_KEY_' + cid.toUpperCase().replace('-', '_');\n\n  String config;\n  String description;\n\n  if ('dedicated'.equals(ptype)) {\n    // Dedicated: single dataset pipeline (prefer type-prefixed topic)\n    Map first = null;\n    for (def e : entries) {\n      Map m = (Map)e;\n      if (m.data_stream_type == null) continue;\n      String ds = (String)m.dataset;\n      String ns = m.namespace != null ? (String)m.namespace : 'default';\n      String st = (String)m.data_stream_type;\n      String expected = st + '-' + ds + '-' + ns;\n      String t = m.topic != null ? (String)m.topic : expected;\n      if (first == null || expected.equals(t)) first = m;\n    }\n    if (first == null) continue;\n    String dataset = (String)first.dataset;\n    String namespace = first.namespace != null ? (String)first.namespace : 'default';\n    String streamType = (String)first.data_stream_type;\n    String topic = streamType + '-' + dataset + '-' + namespace;\n\n    config = dedicatedTpl\n      .replace('__KAFKA_BOOTSTRAP__', kafkaBootstrap)\n      .replace('__TOPIC__', topic)\n      .replace('__PIPELINE_ID__', pid)\n      .replace('__GROUP_ID__', groupId)\n      .replace('__CONSUMER_THREADS__', String.valueOf(dedicatedConsumerThreads))\n      .replace('__ES_HOSTS__', esHostsStr)\n      .replace('__DATA_STREAM_TYPE__', streamType)\n      .replace('__DATASET__', dataset)\n      .replace('__NAMESPACE__', namespace)\n      .replace('__API_KEY_VAR__', apiKeyVar);\n\n    description = 'CPM dedicated pipeline to ' + cid + ' (' + dataset + ')';\n  } else {\n    // Catchall: multiple topics (dedupe, type-prefixed)\n    Set topicSet = new LinkedHashSet();\n    for (def e : entries) {\n      Map m = (Map)e;\n      if (m.data_stream_type == null) continue;\n      String ds = (String)m.dataset;\n      String ns = m.namespace != null ? (String)m.namespace : 'default';\n      String st = (String)m.data_stream_type;\n      String t = m.topic != null ? (String)m.topic : st + '-' + ds + '-' + ns;\n      if (!t.startsWith('logs-') && !t.startsWith('metrics-') && !t.startsWith('traces-') && !t.equals('filebeat')) {\n        t = st + '-' + ds + '-' + ns;\n      }\n      topicSet.add(t);\n    }\n    if (topicSet.isEmpty()) continue;\n    String topicsList = '';\n    int ti = 0;\n    for (def topic : topicSet) {\n      if (ti > 0) topicsList = topicsList + ', ';\n      topicsList = topicsList + DQ + topic + DQ;\n      ti++;\n    }\n\n    config = catchallTpl\n      .replace('__KAFKA_BOOTSTRAP__', kafkaBootstrap)\n      .replace('__TOPICS_LIST__', topicsList)\n      .replace('__CLUSTER_ID__', cid)\n      .replace('__GROUP_ID__', groupId)\n      .replace('__CONSUMER_THREADS__', String.valueOf(catchallConsumerThreads))\n      .replace('__ES_HOSTS__', esHostsStr)\n      .replace('__API_KEY_VAR__', apiKeyVar);\n\n    description = 'CPM catch-all pipeline for ' + cid + ' (' + entries.size() + ' datasets)';\n  }\n\n  // Build pipeline_settings from template (numbers unquoted, strings quoted)\n  Map settings = 'dedicated'.equals(ptype) ? dedicatedSettings : catchallSettings;\n  String settingsStr = '';\n  int si = 0;\n  for (def se : settings.entrySet()) {\n    String skey = (String)se.getKey();\n    def sval = se.getValue();\n    if (si > 0) settingsStr = settingsStr + ',';\n    if (sval instanceof Number) {\n      settingsStr = settingsStr + DQ + skey + DQ + ':' + String.valueOf(sval);\n    } else {\n      settingsStr = settingsStr + DQ + skey + DQ + ':' + DQ + String.valueOf(sval) + DQ;\n    }\n    si++;\n  }\n\n  String esc = config.replace(BS, BS + BS).replace(DQ, BS + DQ).replace(NL, BS + 'n').replace(CR, BS + 'r').replace(TAB, BS + 't');\n\n  String body = '{' +\n    DQ + 'description' + DQ + ':' + DQ + description + DQ + ',' +\n    DQ + 'last_modified' + DQ + ':' + DQ + ts + DQ + ',' +\n    DQ + 'pipeline_metadata' + DQ + ':{' + DQ + 'type' + DQ + ':' + DQ + 'logstash_pipeline' + DQ + ',' + DQ + 'version' + DQ + ':1},' +\n    DQ + 'pipeline' + DQ + ':' + DQ + esc + DQ + ',' +\n    DQ + 'pipeline_settings' + DQ + ':{' + settingsStr + '},' +\n    DQ + 'username' + DQ + ':' + DQ + 'cpm' + DQ +\n    '}';\n\n  Map p = new HashMap();\n  p.put('pipeline_id', pid);\n  p.put('body', body);\n  pipelines.add(p);\n}\n\n// Remove CPM pipelines in Logstash that are no longer desired\nSet existingLogstashPipelines = new HashSet();\nif (ctx.payload.existing_pipelines != null) {\n  def ep = ctx.payload.existing_pipelines;\n  if (ep instanceof Map) {\n    for (def k : ep.keySet()) {\n      existingLogstashPipelines.add((String)k);\n    }\n  }\n}\n\nSet desiredPipelineIds = new HashSet(pipelineGroups.keySet());\nfor (def existingPid : existingLogstashPipelines) {\n  String pid = (String)existingPid;\n  if (pid.indexOf('_cpm-catchall-') < 0 && pid.indexOf('_cpm-dedicated-') < 0) continue;\n  if (!desiredPipelineIds.contains(pid)) {\n    inactivePipelineIds.add(pid);\n  }\n}\n\nList pipelineDeletions = new ArrayList();\nfor (def pidObj : inactivePipelineIds) {\n  String pid = (String)pidObj;\n  if (!existingLogstashPipelines.contains(pid)) continue;\n  Map d = new HashMap();\n  d.put('pipeline_id', pid);\n  pipelineDeletions.add(d);\n}\n\nMap out = new HashMap();\nout.put('pipelines', pipelines);\nout.put('pipeline_deletions', pipelineDeletions);\nreturn out;",
+      "source": "// ====== CPM Pipeline Pusher ======
+// Reads state from cpm-pipeline-state, renders pipeline configs, and pushes to Logstash
+
+// JSON-escape helper characters
+String BS  = Character.toString((char)92);
+String DQ  = Character.toString((char)34);
+String NL  = Character.toString((char)10);
+String CR  = Character.toString((char)13);
+String TAB = Character.toString((char)9);
+
+String ts = ctx.execution_time.toString();
+
+String kafkaGroupId = 'cpm-ingest';
+if (ctx.payload.routing_config != null && ctx.payload.routing_config.hits != null && ctx.payload.routing_config.hits.hits.size() > 0) {
+  def rcfg = ctx.payload.routing_config.hits.hits[0]._source;
+  if (rcfg != null && rcfg.kafka_group_id != null && !((String)rcfg.kafka_group_id).isEmpty()) {
+    kafkaGroupId = (String)rcfg.kafka_group_id;
+  }
+}
+
+// Build registry map (active clusters) and pipeline ids to remove (inactive)
+Map registryMap = new HashMap();
+Set inactiveClusterIds = new HashSet();
+Set inactivePipelineIds = new HashSet();
+for (def hit : ctx.payload.registry.hits.hits) {
+  Map src = hit._source;
+  String cid = (String)src.cluster_id;
+  boolean active = src.active == null || (boolean)src.active;
+  String dc = src.dc != null ? (String)src.dc : 'default';
+  if (!active) {
+    inactiveClusterIds.add(cid);
+    inactivePipelineIds.add(dc + '_cpm-catchall-dhl-' + cid);
+    inactivePipelineIds.add(dc + '_cpm-catchall-mld-' + cid);
+    inactivePipelineIds.add(dc + '_cpm-dedicated-' + cid);
+    inactivePipelineIds.add(dc + '_cpm-catchall-' + cid);
+    if (src.cluster_uuid != null) {
+      String cu = (String)src.cluster_uuid;
+      if (!cu.equals(cid)) {
+        inactiveClusterIds.add(cu);
+        inactivePipelineIds.add(dc + '_cpm-catchall-dhl-' + cu);
+        inactivePipelineIds.add(dc + '_cpm-catchall-mld-' + cu);
+        inactivePipelineIds.add(dc + '_cpm-dedicated-' + cu);
+        inactivePipelineIds.add(dc + '_cpm-catchall-' + cu);
+      }
+    }
+    continue;
+  }
+  Map m = new HashMap();
+  m.put('cluster_id', cid);
+  m.put('cluster_uuid', (String)src.cluster_uuid);
+  m.put('cluster_name', src.cluster_name != null ? (String)src.cluster_name : '');
+  m.put('ingest_hosts', src.ingest_hosts != null ? (String)src.ingest_hosts : '');
+  m.put('dc', dc);
+  registryMap.put(cid, m);
+}
+
+// Read templates from search results
+String kafkaBootstrapDhl = 'dhl-kafka:9092';
+String kafkaBootstrapMld = 'mld-kafka:9092';
+String dedicatedTpl = '';
+long dedicatedConsumerThreads = 1;
+Map dedicatedSettings = new HashMap();
+if (ctx.payload.template_dedicated.hits.total > 0) {
+  for (def hit : ctx.payload.template_dedicated.hits.hits) {
+    if ('dedicated'.equals((String)hit._id)) {
+      dedicatedTpl = (String)hit._source.template;
+      def ct = hit._source.consumer_threads;
+      if (ct != null) dedicatedConsumerThreads = ct;
+      def kbd = hit._source.kafka_bootstrap_dhl;
+      if (kbd != null) kafkaBootstrapDhl = (String)kbd;
+      def kbm = hit._source.kafka_bootstrap_mld;
+      if (kbm != null) kafkaBootstrapMld = (String)kbm;
+      def ps = hit._source.pipeline_settings;
+      if (ps != null) dedicatedSettings = (Map)ps;
+      break;
+    }
+  }
+}
+String catchallTpl = '';
+long catchallConsumerThreads = 1;
+Map catchallSettings = new HashMap();
+if (ctx.payload.template_catchall.hits.total > 0) {
+  for (def hit : ctx.payload.template_catchall.hits.hits) {
+    if ('catchall'.equals((String)hit._id)) {
+      catchallTpl = (String)hit._source.template;
+      def ct = hit._source.consumer_threads;
+      if (ct != null) catchallConsumerThreads = ct;
+      def kbd = hit._source.kafka_bootstrap_dhl;
+      if (kbd != null) kafkaBootstrapDhl = (String)kbd;
+      def kbm = hit._source.kafka_bootstrap_mld;
+      if (kbm != null) kafkaBootstrapMld = (String)kbm;
+      def ps = hit._source.pipeline_settings;
+      if (ps != null) catchallSettings = (Map)ps;
+      break;
+    }
+  }
+}
+
+// Group state entries by pipeline_id
+Map pipelineGroups = new HashMap();    // pipeline_id -> List of state entries
+Map pipelineTypes = new HashMap();     // pipeline_id -> 'dedicated' or 'catchall'
+Map pipelineClusters = new HashMap();  // pipeline_id -> cluster_id
+Map pipelineDcs = new HashMap();      // pipeline_id -> dc
+
+for (def hit : ctx.payload.state.hits.hits) {
+  Map src = hit._source;
+  if (src.data_stream_type == null) continue;
+  String pid = (String)src.pipeline_id;
+  String ptype = (String)src.pipeline_type;
+  String cid = (String)src.cluster_id;
+  String dc = src.dc != null ? (String)src.dc : 'default';
+
+  String cu = src.cluster_uuid != null ? (String)src.cluster_uuid : '';
+  if (inactiveClusterIds.contains(cid)
+      || (!cu.isEmpty() && inactiveClusterIds.contains(cu))) {
+    inactivePipelineIds.add(pid);
+    if ('catchall'.equals(ptype)) {
+      inactivePipelineIds.add(dc + '_cpm-catchall-dhl-' + cid);
+      inactivePipelineIds.add(dc + '_cpm-catchall-mld-' + cid);
+    }
+    continue;
+  }
+
+  if (!pipelineGroups.containsKey(pid)) {
+    pipelineGroups.put(pid, new ArrayList());
+    pipelineTypes.put(pid, ptype);
+    pipelineClusters.put(pid, cid);
+    pipelineDcs.put(pid, dc);
+  }
+  ((List)pipelineGroups.get(pid)).add(src);
+}
+
+// Build pipelines
+List pipelines = new ArrayList();
+
+for (def entry : pipelineGroups.entrySet()) {
+  String pid = (String)entry.getKey();
+  List entries = (List)entry.getValue();
+  String ptype = (String)pipelineTypes.get(pid);
+  String cid = (String)pipelineClusters.get(pid);
+  String dc = (String)pipelineDcs.get(pid);
+
+  Map cluster = (Map)registryMap.get(cid);
+  if (cluster == null) continue;
+  String ingestHosts = (String)cluster.get('ingest_hosts');
+  if (ingestHosts == null || ingestHosts.isEmpty()) continue;
+  String clusterName = (String)cluster.get('cluster_name');
+  if (clusterName == null || clusterName.isEmpty()) clusterName = cid;
+  String groupId = kafkaGroupId;
+
+  String esHostsStr = DQ + ingestHosts.replace(',', ':9200' + DQ + ',' + DQ) + ':9200' + DQ;
+  String apiKeyVar = 'ES_API_KEY_' + cid.toUpperCase().replace('-', '_');
+
+  String config;
+  String description;
+
+  if ('dedicated'.equals(ptype)) {
+    // Dedicated: single dataset pipeline (prefer type-prefixed topic)
+    Map first = null;
+    for (def e : entries) {
+      Map m = (Map)e;
+      if (m.data_stream_type == null) continue;
+      String ds = (String)m.dataset;
+      String ns = m.namespace != null ? (String)m.namespace : 'default';
+      String st = (String)m.data_stream_type;
+      String expected = st + '-' + ds + '-' + ns;
+      String t = m.topic != null ? (String)m.topic : expected;
+      if (first == null || expected.equals(t)) first = m;
+    }
+    if (first == null) continue;
+    String dataset = (String)first.dataset;
+    String namespace = first.namespace != null ? (String)first.namespace : 'default';
+    String streamType = (String)first.data_stream_type;
+    String topic = streamType + '-' + dataset + '-' + namespace;
+
+    config = dedicatedTpl
+      .replace('__KAFKA_BOOTSTRAP_DHL__', kafkaBootstrapDhl)
+      .replace('__KAFKA_BOOTSTRAP_MLD__', kafkaBootstrapMld)
+      .replace('__TOPIC__', topic)
+      .replace('__PIPELINE_ID__', pid)
+      .replace('__GROUP_ID__', groupId)
+      .replace('__CONSUMER_THREADS__', String.valueOf(dedicatedConsumerThreads))
+      .replace('__ES_HOSTS__', esHostsStr)
+      .replace('__DATA_STREAM_TYPE__', streamType)
+      .replace('__DATASET__', dataset)
+      .replace('__NAMESPACE__', namespace)
+      .replace('__API_KEY_VAR__', apiKeyVar);
+
+    description = 'CPM dedicated pipeline to ' + cid + ' (' + dataset + ', dhl+mld)';
+  } else {
+    // Catchall: one pipeline per Kafka cluster (dhl + mld), same topic list and ES output
+    Set topicSet = new LinkedHashSet();
+    for (def e : entries) {
+      Map m = (Map)e;
+      if (m.data_stream_type == null) continue;
+      String ds = (String)m.dataset;
+      String ns = m.namespace != null ? (String)m.namespace : 'default';
+      String st = (String)m.data_stream_type;
+      String t = m.topic != null ? (String)m.topic : st + '-' + ds + '-' + ns;
+      if (!t.startsWith('logs-') && !t.startsWith('metrics-') && !t.startsWith('traces-')) {
+        t = st + '-' + ds + '-' + ns;
+      }
+      topicSet.add(t);
+    }
+    if (topicSet.isEmpty()) continue;
+    String topicsList = '';
+    int ti = 0;
+    for (def topic : topicSet) {
+      if (ti > 0) topicsList = topicsList + ', ';
+      topicsList = topicsList + DQ + topic + DQ;
+      ti++;
+    }
+
+    Map settings = catchallSettings;
+    String settingsStr = '';
+    int si = 0;
+    for (def se : settings.entrySet()) {
+      String skey = (String)se.getKey();
+      def sval = se.getValue();
+      if (si > 0) settingsStr = settingsStr + ',';
+      if (sval instanceof Number) {
+        settingsStr = settingsStr + DQ + skey + DQ + ':' + String.valueOf(sval);
+      } else {
+        settingsStr = settingsStr + DQ + skey + DQ + ':' + DQ + String.valueOf(sval) + DQ;
+      }
+      si++;
+    }
+
+    List kafkaTargets = new ArrayList();
+    Map dhlTarget = new HashMap();
+    dhlTarget.put('suffix', 'dhl');
+    dhlTarget.put('bootstrap', kafkaBootstrapDhl);
+    kafkaTargets.add(dhlTarget);
+    Map mldTarget = new HashMap();
+    mldTarget.put('suffix', 'mld');
+    mldTarget.put('bootstrap', kafkaBootstrapMld);
+    kafkaTargets.add(mldTarget);
+
+    for (def kt : kafkaTargets) {
+      String kafkaSuffix = (String)kt.get('suffix');
+      String kafkaBootstrap = (String)kt.get('bootstrap');
+      String outPid = dc + '_cpm-catchall-' + kafkaSuffix + '-' + cid;
+
+      config = catchallTpl
+        .replace('__KAFKA_BOOTSTRAP__', kafkaBootstrap)
+        .replace('__TOPICS_LIST__', topicsList)
+        .replace('__CLUSTER_ID__', cid)
+        .replace('__GROUP_ID__', groupId)
+        .replace('__CONSUMER_THREADS__', String.valueOf(catchallConsumerThreads))
+        .replace('__ES_HOSTS__', esHostsStr)
+        .replace('__API_KEY_VAR__', apiKeyVar);
+
+      description = 'CPM catch-all pipeline (' + kafkaSuffix + ') for ' + cid + ' (' + topicSet.size() + ' datasets)';
+
+      String esc = config.replace(BS, BS + BS).replace(DQ, BS + DQ).replace(NL, BS + 'n').replace(CR, BS + 'r').replace(TAB, BS + 't');
+
+      String body = '{' +
+        DQ + 'description' + DQ + ':' + DQ + description + DQ + ',' +
+        DQ + 'last_modified' + DQ + ':' + DQ + ts + DQ + ',' +
+        DQ + 'pipeline_metadata' + DQ + ':{' + DQ + 'type' + DQ + ':' + DQ + 'logstash_pipeline' + DQ + ',' + DQ + 'version' + DQ + ':1},' +
+        DQ + 'pipeline' + DQ + ':' + DQ + esc + DQ + ',' +
+        DQ + 'pipeline_settings' + DQ + ':{' + settingsStr + '},' +
+        DQ + 'username' + DQ + ':' + DQ + 'cpm' + DQ +
+        '}';
+
+      Map cp = new HashMap();
+      cp.put('pipeline_id', outPid);
+      cp.put('body', body);
+      pipelines.add(cp);
+    }
+
+    inactivePipelineIds.add(dc + '_cpm-catchall-' + cid);
+    continue;
+  }
+
+  // Build pipeline_settings from template (numbers unquoted, strings quoted)
+  Map settings = 'dedicated'.equals(ptype) ? dedicatedSettings : catchallSettings;
+  String settingsStr = '';
+  int si = 0;
+  for (def se : settings.entrySet()) {
+    String skey = (String)se.getKey();
+    def sval = se.getValue();
+    if (si > 0) settingsStr = settingsStr + ',';
+    if (sval instanceof Number) {
+      settingsStr = settingsStr + DQ + skey + DQ + ':' + String.valueOf(sval);
+    } else {
+      settingsStr = settingsStr + DQ + skey + DQ + ':' + DQ + String.valueOf(sval) + DQ;
+    }
+    si++;
+  }
+
+  String esc = config.replace(BS, BS + BS).replace(DQ, BS + DQ).replace(NL, BS + 'n').replace(CR, BS + 'r').replace(TAB, BS + 't');
+
+  String body = '{' +
+    DQ + 'description' + DQ + ':' + DQ + description + DQ + ',' +
+    DQ + 'last_modified' + DQ + ':' + DQ + ts + DQ + ',' +
+    DQ + 'pipeline_metadata' + DQ + ':{' + DQ + 'type' + DQ + ':' + DQ + 'logstash_pipeline' + DQ + ',' + DQ + 'version' + DQ + ':1},' +
+    DQ + 'pipeline' + DQ + ':' + DQ + esc + DQ + ',' +
+    DQ + 'pipeline_settings' + DQ + ':{' + settingsStr + '},' +
+    DQ + 'username' + DQ + ':' + DQ + 'cpm' + DQ +
+    '}';
+
+  Map p = new HashMap();
+  p.put('pipeline_id', pid);
+  p.put('body', body);
+  pipelines.add(p);
+}
+
+// Remove CPM pipelines in Logstash that are no longer desired
+Set existingLogstashPipelines = new HashSet();
+if (ctx.payload.existing_pipelines != null) {
+  def ep = ctx.payload.existing_pipelines;
+  if (ep instanceof Map) {
+    for (def k : ep.keySet()) {
+      existingLogstashPipelines.add((String)k);
+    }
+  }
+}
+
+Set desiredPipelineIds = new HashSet();
+for (def entry : pipelineGroups.entrySet()) {
+  String pid = (String)entry.getKey();
+  String ptype = (String)pipelineTypes.get(pid);
+  String cid = (String)pipelineClusters.get(pid);
+  String dc = (String)pipelineDcs.get(pid);
+  if ('catchall'.equals(ptype)) {
+    desiredPipelineIds.add(dc + '_cpm-catchall-dhl-' + cid);
+    desiredPipelineIds.add(dc + '_cpm-catchall-mld-' + cid);
+  } else {
+    desiredPipelineIds.add(pid);
+  }
+}
+for (def existingPid : existingLogstashPipelines) {
+  String pid = (String)existingPid;
+  if (pid.indexOf('_cpm-catchall-') < 0 && pid.indexOf('_cpm-dedicated-') < 0) continue;
+  if (!desiredPipelineIds.contains(pid)) {
+    inactivePipelineIds.add(pid);
+  }
+}
+
+List pipelineDeletions = new ArrayList();
+for (def pidObj : inactivePipelineIds) {
+  String pid = (String)pidObj;
+  if (!existingLogstashPipelines.contains(pid)) continue;
+  Map d = new HashMap();
+  d.put('pipeline_id', pid);
+  pipelineDeletions.add(d);
+}
+
+Map out = new HashMap();
+out.put('pipelines', pipelines);
+out.put('pipeline_deletions', pipelineDeletions);
+return out;\",
+      \"lang\": \"painless\"
+    }
+  },
+  \"actions\": {
+    \"delete_inactive_pipelines\": {
+      \"condition\": {
+        \"script\": {
+          \"source\": \"return ctx.payload.pipeline_deletions != null && ctx.payload.pipeline_deletions.size() > 0\",
+          \"lang\": \"painless\"
+        }
+      },
+      \"foreach\": \"ctx.payload.pipeline_deletions\",
+      \"max_iterations\": 100,
+      \"webhook\": {
+        \"scheme\": \"https\",
+
+        \"host\": \"{{ webhook_host }}\",
+
+        \"port\": 9200,
+        \"method\": \"delete\",
+        \"path\": \"/_logstash/pipeline/{{ctx.payload.pipeline_id}}\",
+        \"params\": {},
+        \"headers\": {
+
+          \"Authorization\": \"Apikey {{ watcher_api_key.encoded  }}\"
+
+        },
+        \"body\": \"\"
+      }
+    },
+    \"push_pipelines\": {
+      \"condition\": {
+        \"script\": {
+          \"source\": \"return ctx.payload.pipelines != null && ctx.payload.pipelines.size() > 0",
       "lang": "painless"
     }
   },

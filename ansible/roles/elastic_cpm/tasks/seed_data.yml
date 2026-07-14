@@ -12,6 +12,10 @@
       properties:
         consumer_threads:
           type: integer
+        kafka_bootstrap_dhl:
+          type: keyword
+        kafka_bootstrap_mld:
+          type: keyword
     status_code: [200, 201, 400]
   tags: [seed]
 

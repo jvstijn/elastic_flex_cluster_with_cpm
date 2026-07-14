@@ -21,6 +21,12 @@
       "kafka_bootstrap": {
         "type": "keyword"
       },
+      "kafka_bootstrap_dhl": {
+        "type": "keyword"
+      },
+      "kafka_bootstrap_mld": {
+        "type": "keyword"
+      },
       "consumer_threads": {
         "type": "integer"
       },
