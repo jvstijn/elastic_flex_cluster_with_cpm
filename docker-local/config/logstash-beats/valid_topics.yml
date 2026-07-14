@@ -88,7 +88,6 @@
 "logs-endpoint.events.api-prd": "yes"
 "logs-endpoint.events.api-tst": "yes"
 "logs-endpoint.events.file-acc": "yes"
-"logs-endpoint.events.file-dafault": "yes"
 "logs-endpoint.events.file-default": "yes"
 "logs-endpoint.events.file-ont": "yes"
 "logs-endpoint.events.file-prd": "yes"
