@@ -363,7 +363,10 @@ services:
       DYNAMIC_CONFIG_ENABLED: "true"
     mem_limit: 536870912
     networks:
-      - dod-elastic
+      dod-elastic:
+        aliases:
+          - dhl-kafka
+          - mld-kafka
 
   logstash-beats:
     depends_on:

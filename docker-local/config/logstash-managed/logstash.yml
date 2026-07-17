@@ -8,7 +8,7 @@ xpack.monitoring.elasticsearch.ssl.verification_mode: none
 
 xpack.management.enabled: true
 xpack.management.elasticsearch.hosts: ["https://es-central:9200"]
-xpack.management.elasticsearch.username: "logstash_system"
+xpack.management.elasticsearch.username: "cpm_logstash"
 xpack.management.elasticsearch.password: "${LOGSTASH_PASSWORD}"
 xpack.management.elasticsearch.ssl.verification_mode: none
 xpack.management.pipeline.id: ["*"]

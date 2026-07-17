@@ -20,11 +20,11 @@ cpm_datafeed_start: ""
 
 cpm_cluster_registry:
   central-cluster:
-    ingest_hosts: "https://es-central:9200"
+    ingest_hosts: "https://es-central"
     dc: dc-central
   remote-a:
-    ingest_hosts: "https://es-remote-a:9200"
+    ingest_hosts: "https://es-remote-a"
     dc: dc-a
   remote-b:
-    ingest_hosts: "https://es-remote-b:9200"
+    ingest_hosts: "https://es-remote-b"
     dc: dc-b
