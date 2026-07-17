@@ -7,7 +7,7 @@ kibana_password: "{{ lookup('ini', 'KIBANA_PASSWORD type=properties file=' ~ cpm
 
 es_central_port: "{{ lookup('ini', 'ES_CENTRAL_PORT type=properties file=' ~ cpm_env_file) }}"
 elastic_base_url: "https://localhost:{{ es_central_port }}"
-kibana_base_url: "http://localhost:{{ lookup('ini', 'KIBANA_PORT type=properties file=' ~ cpm_env_file) }}"
+kibana_url: "http://localhost:{{ lookup('ini', 'KIBANA_PORT type=properties file=' ~ cpm_env_file) }}"
 cpm_validate_certs: false
 
 webhook_host: es-central

@@ -120,7 +120,7 @@
 
     - name: Kibana status (unauthenticated)
       ansible.builtin.uri:
-        url: "{{ kibana_base_url }}/api/status"
+        url: "{{ kibana_url }}/api/status"
         method: GET
         validate_certs: "{{ cpm_validate_certs }}"
         status_code: [200]
@@ -128,7 +128,7 @@
 
     - name: Kibana spaces API (elastic user)
       ansible.builtin.uri:
-        url: "{{ kibana_base_url }}/api/spaces/space"
+        url: "{{ kibana_url }}/api/spaces/space"
         method: GET
         user: "{{ elastic_usr }}"
         password: "{{ elastic_pw }}"
@@ -139,7 +139,7 @@
 
     - name: Kibana saved objects API (elastic user)
       ansible.builtin.uri:
-        url: "{{ kibana_base_url }}/api/saved_objects/_find?type=index-pattern&per_page=1"
+        url: "{{ kibana_url }}/api/saved_objects/_find?type=index-pattern&per_page=1"
         method: GET
         user: "{{ elastic_usr }}"
         password: "{{ elastic_pw }}"
@@ -169,7 +169,7 @@
           - "Watcher: OK ({{ es_watcher.json._nodes.total }} nodes)"
           - "ML: OK"
           - "Transform API: OK"
-          - "Kibana {{ kibana_base_url }}: {{ kibana_status.json.status.overall.level }}"
+          - "Kibana {{ kibana_url }}: {{ kibana_status.json.status.overall.level }}"
           - "Kibana spaces API: OK ({{ kibana_spaces.json | length }} spaces)"
           - "Kibana saved objects API: OK"
           - "Remote cluster05: {{ remote_health.json.status | default('skipped') }}"

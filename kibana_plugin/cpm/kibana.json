@@ -6,10 +6,13 @@
     "name": "Elastic Flex CPM",
     "githubUrl": ""
   },
-  "description": "Cluster Pipeline Manager — registry, scoring, stream locks, and watcher control",
+  "description": "Cluster Pipeline Manager \u2014 registry, scoring, stream locks, and watcher control",
   "server": true,
   "ui": true,
-  "requiredPlugins": ["management", "features"],
+  "requiredPlugins": [
+    "management",
+    "features"
+  ],
   "optionalPlugins": [],
   "requiredBundles": []
 }
