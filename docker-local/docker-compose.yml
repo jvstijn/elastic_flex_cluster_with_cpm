@@ -422,6 +422,7 @@ services:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
       - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - VAR_API_KEY=${VAR_API_KEY_CENTRAL}
     mem_limit: ${MEM_LIMIT}
     networks:
       - dod-elastic
@@ -449,6 +450,7 @@ services:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
       - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - VAR_API_KEY=${VAR_API_KEY_REMOTE_A}
     mem_limit: ${MEM_LIMIT}
     networks:
       - dod-elastic
@@ -476,6 +478,7 @@ services:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
       - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - VAR_API_KEY=${VAR_API_KEY_REMOTE_B}
     mem_limit: ${MEM_LIMIT}
     networks:
       - dod-elastic
