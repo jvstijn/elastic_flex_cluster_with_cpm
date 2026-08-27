@@ -8,3 +8,7 @@ kibana_plugin/node_modules/
 
 # Scratch/build artifacts (unzipped plugin, zips) — never track build output
 temp/
+
+# Lokale env-bestanden met wachtwoorden/API-keys (incl. Finder-duplicaten als ".env 2")
+.env*
+!.env.example

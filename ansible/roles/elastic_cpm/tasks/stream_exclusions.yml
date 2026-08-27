@@ -1,0 +1,113 @@
+---
+# Beheert de documenten in cpm-stream-exclusions vanuit de inventory.
+#
+# Vul `cpm_stream_exclusions` in group_vars met items {pattern, reason}. De
+# state-manager laat elk matchend topic uit cpm-pipeline-state en daarmee uit de
+# Logstash-input vallen.
+#
+# `pattern` is de topicnaam == de data stream-naam (<type>-<dataset>-<namespace>).
+# Eén `*` is toegestaan en matcht als prefix, suffix of allebei.
+#
+# Standaard is dit additief: exclusions die buiten ansible zijn aangemaakt (bijv.
+# met scripts/cpm_exclude_stream.py) blijven staan. Zet
+# `cpm_stream_exclusions_prune: true` om ansible leidend te maken en al het
+# overige op te ruimen.
+#
+# De document-id gebruikt dezelfde `_STAR_`-codering als cpm_exclude_stream.py,
+# zodat beide dezelfde documenten beheren.
+
+- name: Install CPM stream exclusions timestamp ingest pipeline
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/_ingest/pipeline/cpm-stream-exclusions-stamp"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body: "{{ lookup('file', role_path + '/files/json/ingest_pipeline_cpm-stream-exclusions-stamp.json') }}"
+    status_code: [200, 201]
+  tags: [exclusions]
+
+# Hierdoor hoeft een kale PUT vanuit Dev Tools geen updated_at mee te geven.
+- name: Set default_pipeline on cpm-stream-exclusions
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-stream-exclusions/_settings"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body:
+      index:
+        default_pipeline: cpm-stream-exclusions-stamp
+    status_code: [200, 404]
+  tags: [exclusions]
+
+- name: Stamp exclusion timestamp
+  ansible.builtin.set_fact:
+    cpm_exclusion_ts: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+  when: cpm_stream_exclusions | length > 0 or cpm_stream_exclusions_prune | bool
+  tags: [exclusions]
+
+- name: Seed CPM stream exclusions
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-stream-exclusions/_doc/{{ item.pattern | replace('*', '_STAR_') }}?refresh=true"
+    method: PUT
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body:
+      topic_pattern: "{{ item.pattern }}"
+      reason: "{{ item.reason | default('') }}"
+      updated_by: "{{ item.updated_by | default('ansible') }}"
+      updated_at: "{{ item.updated_at | default(cpm_exclusion_ts) }}"
+    status_code: [200, 201]
+  loop: "{{ cpm_stream_exclusions }}"
+  loop_control:
+    label: "{{ item.pattern }}"
+  tags: [exclusions]
+
+- name: Read existing CPM stream exclusions
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-stream-exclusions/_search?size=1000"
+    method: GET
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    status_code: [200, 404]
+  register: cpm_exclusions_existing
+  when: cpm_stream_exclusions_prune | bool
+  tags: [exclusions]
+
+- name: Remove CPM stream exclusions not in the inventory
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-stream-exclusions/_doc/{{ item }}?refresh=true"
+    method: DELETE
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    status_code: [200, 404]
+  loop: >-
+    {{ (cpm_exclusions_existing.json.hits.hits | default([]) | map(attribute='_id') | list)
+       | difference(cpm_stream_exclusions | map(attribute='pattern') | map('regex_replace', '\*', '_STAR_') | list) }}
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - cpm_stream_exclusions_prune | bool
+    - cpm_exclusions_existing.status | default(404) == 200
+  tags: [exclusions]
+
+- name: Show managed CPM stream exclusions
+  ansible.builtin.debug:
+    msg: >-
+      {{ cpm_stream_exclusions | length }} exclusion(s) uit inventory
+      {{ '(ansible leidend, overige opgeruimd)' if cpm_stream_exclusions_prune | bool
+         else '(additief; handmatige exclusions blijven staan)' }}.
+      Draai state-manager + pipeline-manager om ze door te voeren.
+  tags: [exclusions]
