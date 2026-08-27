@@ -31,6 +31,10 @@
       ansible.builtin.include_tasks: seed_data.yml
       tags: [seed]
 
+    - name: Manage stream exclusions from inventory
+      ansible.builtin.include_tasks: stream_exclusions.yml
+      tags: [exclusions]
+
     - name: Patch cluster registry from inventory
       ansible.builtin.include_tasks: registry_patch.yml
       tags: [registry]

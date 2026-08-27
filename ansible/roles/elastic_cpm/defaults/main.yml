@@ -35,6 +35,19 @@ cpm_index_dynamic_settings:
 # ISO8601; empty = playbook computes now-2d at runtime
 cpm_datafeed_start: ""
 
+# Data streams die buiten CPM-beheer blijven. `pattern` is de topicnaam == de
+# data stream-naam (<type>-<dataset>-<namespace>); één `*` mag, als prefix,
+# suffix of allebei. Voorbeeld:
+#
+#   cpm_stream_exclusions:
+#     - { pattern: "logs-winlog.winlog-default", reason: "ticket Y" }
+#     - { pattern: "*-tst", reason: "alle test-streams" }
+#
+# Standaard additief: exclusions die buiten ansible zijn gemaakt blijven staan.
+# Zet cpm_stream_exclusions_prune op true om ansible leidend te maken.
+cpm_stream_exclusions: []
+cpm_stream_exclusions_prune: false
+
 cpm_indices:
   - { name: cpm-cluster-registry, file: json/index_cpm-cluster-registry.json }
   - { name: cpm-routing-config, file: json/index_cpm-routing-config.json }

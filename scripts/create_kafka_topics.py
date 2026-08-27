@@ -110,7 +110,7 @@ def main() -> int:
     cmd = ["docker", "exec", "-i", args.container, "bash", "-c", script]
     print(f"\nCreating {len(topics)} topics in container {args.container} ...")
     try:
-        r = subprocess.run(cmd, input="\n".join(topics).encode(), capture_output=True)
+        r = subprocess.run(cmd, input=("\n".join(topics) + "\n").encode(), capture_output=True)
     except FileNotFoundError:
         print("docker CLI not found on PATH.", file=sys.stderr)
         return 2
