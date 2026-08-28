@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 """Create the CPM Kafka topics.
 
-Reads the topics consumed by the CPM-managed Logstash pipelines from
-Elasticsearch (`GET /_logstash/pipeline`) and creates each one in the Kafka
-cluster via `kafka-topics.sh` inside a running broker container.
+Reads the topic names from either the CPM-managed Logstash pipelines in
+Elasticsearch (`GET /_logstash/pipeline`, the default) or from the Kafka cluster
+itself (`--source kafka`), and creates each one via `kafka-topics.sh` inside a
+running broker container.
+
+With `--suffix` every name gets an extension appended, which is how the
+acceptance topics are made: the same set of topics as production, but ending in
+`-acc`. Names that already carry the suffix are left alone, so re-running never
+produces `...-acc-acc`. The suffix must match `kafka_topic_extension` in the
+inventory (ansible/group_vars/acc.yml), because the pipeline-manager watcher
+appends that same value to every topic it renders.
 
 Idempotent (`--create --if-not-exists`). Only stdlib is used; the script
 prompts for the Elasticsearch password (or use --password).
@@ -12,6 +20,10 @@ Examples:
   ./create_kafka_topics.py --insecure
   ./create_kafka_topics.py --insecure --partitions 3 --replication-factor 3
   ./create_kafka_topics.py --insecure --dry-run
+
+  # acceptance: mirror every topic currently in Kafka to a "-acc" twin
+  ./create_kafka_topics.py --source kafka --suffix=-acc --dry-run
+  ./create_kafka_topics.py --source kafka --suffix=-acc
 """
 from __future__ import annotations
 
@@ -44,6 +56,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--replication-factor", type=int, default=3)
     p.add_argument("--kafka-topics", default="/opt/kafka/bin/kafka-topics.sh",
                    help="Path to kafka-topics.sh inside the container")
+    p.add_argument("--source", choices=["logstash", "kafka"], default="logstash",
+                   help="Where to read the topic names from: the CPM Logstash pipelines "
+                        "or the topics that already exist in Kafka")
+    p.add_argument("--suffix", default="",
+                   help='Append this to every topic name (e.g. "-acc" for acceptance); '
+                        "names that already end in it are left unchanged")
     p.add_argument("--dry-run", action="store_true", help="Only list the topics, do not create them")
     return p.parse_args()
 
@@ -76,19 +94,42 @@ def get_topics(host: str, user: str, pw: str, ca_cert: str | None, insecure: boo
     return sorted(topics)
 
 
+def list_kafka_topics(container: str, tool: str, bootstrap: str) -> list[str]:
+    out = subprocess.check_output(
+        ["docker", "exec", container, tool, "--bootstrap-server", bootstrap, "--list"]
+    ).decode()
+    return sorted(t.strip() for t in out.splitlines() if t.strip() and not t.startswith("__"))
+
+
 def main() -> int:
     args = parse_args()
-    pw = args.password or getpass.getpass("Elasticsearch password: ")
-    try:
-        topics = get_topics(args.host, args.user, pw, args.ca_cert, args.insecure)
-    except urllib.error.URLError as e:
-        print(f"Could not read /_logstash/pipeline: {e}", file=sys.stderr)
-        return 2
+    if args.source == "kafka":
+        try:
+            topics = list_kafka_topics(args.container, args.kafka_topics, args.bootstrap)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            print(f"Could not list the topics in Kafka: {e}", file=sys.stderr)
+            return 2
+        if not topics:
+            print("Kafka holds no topics to mirror.", file=sys.stderr)
+            return 1
+    else:
+        pw = args.password or getpass.getpass("Elasticsearch password: ")
+        try:
+            topics = get_topics(args.host, args.user, pw, args.ca_cert, args.insecure)
+        except urllib.error.URLError as e:
+            print(f"Could not read /_logstash/pipeline: {e}", file=sys.stderr)
+            return 2
 
     # Always ensure the router's input + dead-letter topics exist.
     topics = sorted(set(topics) | {"test-dataset", "dead-letter-queue"})
 
-    print(f"CPM pipeline topics (incl. test-dataset + dead-letter-queue): {len(topics)}")
+    if args.suffix:
+        # Skip the ones that already carry the suffix, so re-running is a no-op
+        # instead of creating "<topic>-acc-acc".
+        topics = sorted({t if t.endswith(args.suffix) else t + args.suffix for t in topics})
+        print(f'Topics from {args.source}, suffixed with "{args.suffix}": {len(topics)}')
+    else:
+        print(f"Topics from {args.source} (incl. test-dataset + dead-letter-queue): {len(topics)}")
     for t in topics:
         print(f"  {t}")
     if not topics:

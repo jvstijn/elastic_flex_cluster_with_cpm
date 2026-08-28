@@ -1,6 +1,10 @@
 node_modules
-build
 .git
 .dockerignore
 Dockerfile
 Dockerfile.build
+Dockerfile.old
+# build/ bevat de compileer-uitvoer van Dockerfile en hoort niet in die context,
+# maar Dockerfile.install heeft juist de zip nodig.
+build
+!build/*.zip

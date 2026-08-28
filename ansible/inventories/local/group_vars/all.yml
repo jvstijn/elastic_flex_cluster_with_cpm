@@ -13,18 +13,26 @@ cpm_validate_certs: false
 webhook_host: es-central
 webhook_port: 9200
 
-cpm_monitoring_index: ".monitoring-es-8-*"
+# Monitoring draait op een eigen cluster; es-central bereikt het via de
+# cross-cluster alias "monitoring:". Zonder dat prefix zoeken de ML-datafeeds
+# lokaal, vinden ze niets en blijven alle cluster-scores op 0.
+cpm_monitoring_index: "monitoring:.monitoring-es-8-*"
 cpm_ml_reinstall: false
 cpm_clean_indices: false
 cpm_datafeed_start: ""
 
+# registry-sync zet een pas ontdekt cluster op active: false; met active hier
+# bevestigt `--tags registry` elke run dat alle drie meedoen.
 cpm_cluster_registry:
   central-cluster:
     ingest_hosts: "https://es-central"
     dc: dc-central
+    active: true
   remote-a:
     ingest_hosts: "https://es-remote-a"
     dc: dc-a
+    active: true
   remote-b:
     ingest_hosts: "https://es-remote-b"
     dc: dc-b
+    active: true

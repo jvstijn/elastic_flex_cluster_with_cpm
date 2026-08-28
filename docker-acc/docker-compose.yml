@@ -1,0 +1,486 @@
+name: dod-elastic-acc
+
+# Acceptatie-omgeving: drie eigen Elasticsearch-clusters met een eigen CPM op
+# es-acc-central. Kafka wordt NIET meegedraaid — de acc-stack hangt aan de Kafka
+# van docker-local (extern netwerk, zie het `kafka-bus` netwerk onderaan) en
+# leest daar de topics die op "-acc" eindigen. Die scheiding komt uit
+# kafka_topic_extension in ansible/group_vars/acc.yml: de pipeline-manager
+# watcher plakt "-acc" achter elke topicnaam die hij rendert.
+#
+# Start docker-local eerst (die levert Kafka), daarna:
+#   docker compose -f docker-acc/docker-compose.yml up -d
+
+services:
+  setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+      - ./setup/setup-certs.sh:/setup/setup-certs.sh:ro
+    user: "0"
+    env_file: .env
+    command: ["/bin/bash", "/setup/setup-certs.sh"]
+    networks:
+      - dod-elastic-acc
+
+  es-acc-central:
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+      - es-acc-central-data:/usr/share/elasticsearch/data
+    ports:
+      - "${ES_ACC_CENTRAL_PORT}:9200"
+    env_file: .env
+    environment:
+      - node.name=es-acc-central
+      - cluster.name=acc-central-cluster
+      # dc node-attribute -> registry-sync schrijft het naar cpm-cluster-registry ->
+      # CPM pipeline-ids worden "<dc>_cpm-...", zodat elke Logstash via
+      # xpack.management.pipeline.id alleen zijn eigen pipelines ophaalt.
+      - node.attr.dc=acc-central
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/es-acc-central/es-acc-central.key
+      - xpack.security.http.ssl.certificate=certs/es-acc-central/es-acc-central.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/es-acc-central/es-acc-central.key
+      - xpack.security.transport.ssl.certificate=certs/es-acc-central/es-acc-central.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.security.remote_cluster_client.ssl.enabled=true
+      - xpack.security.remote_cluster_client.ssl.key=certs/es-acc-central/es-acc-central.key
+      - xpack.security.remote_cluster_client.ssl.certificate=certs/es-acc-central/es-acc-central.crt
+      - xpack.security.remote_cluster_client.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.remote_cluster_client.ssl.verification_mode=none
+      - xpack.http.ssl.verification_mode=none
+      - xpack.license.self_generated.type=${LICENSE}
+    # Draagt de CPM-watchers en ML; net als in docker-local krijgt dit cluster
+    # 2g container-geheugen bij 1g heap.
+    mem_limit: 2147483648
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    networks:
+      - dod-elastic-acc
+
+  es-acc-remote-a:
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+      - es-acc-remote-a-data:/usr/share/elasticsearch/data
+    ports:
+      - "${ES_ACC_REMOTE_A_PORT}:9200"
+    env_file: .env
+    environment:
+      - node.name=es-acc-remote-a
+      - cluster.name=acc-remote-a
+      - node.attr.dc=acc-a
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/es-acc-remote-a/es-acc-remote-a.key
+      - xpack.security.http.ssl.certificate=certs/es-acc-remote-a/es-acc-remote-a.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/es-acc-remote-a/es-acc-remote-a.key
+      - xpack.security.transport.ssl.certificate=certs/es-acc-remote-a/es-acc-remote-a.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - remote_cluster_server.enabled=true
+      - remote_cluster.host=0.0.0.0
+      - xpack.security.remote_cluster_server.ssl.enabled=true
+      - xpack.security.remote_cluster_server.ssl.key=certs/es-acc-remote-a/es-acc-remote-a.key
+      - xpack.security.remote_cluster_server.ssl.certificate=certs/es-acc-remote-a/es-acc-remote-a.crt
+      - xpack.security.remote_cluster_server.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.remote_cluster_server.ssl.verification_mode=none
+      - xpack.license.self_generated.type=${LICENSE}
+    mem_limit: ${MEM_LIMIT}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    networks:
+      - dod-elastic-acc
+
+  es-acc-remote-b:
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+      - es-acc-remote-b-data:/usr/share/elasticsearch/data
+    ports:
+      - "${ES_ACC_REMOTE_B_PORT}:9200"
+    env_file: .env
+    environment:
+      - node.name=es-acc-remote-b
+      - cluster.name=acc-remote-b
+      - node.attr.dc=acc-b
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/es-acc-remote-b/es-acc-remote-b.key
+      - xpack.security.http.ssl.certificate=certs/es-acc-remote-b/es-acc-remote-b.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/es-acc-remote-b/es-acc-remote-b.key
+      - xpack.security.transport.ssl.certificate=certs/es-acc-remote-b/es-acc-remote-b.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - remote_cluster_server.enabled=true
+      - remote_cluster.host=0.0.0.0
+      - xpack.security.remote_cluster_server.ssl.enabled=true
+      - xpack.security.remote_cluster_server.ssl.key=certs/es-acc-remote-b/es-acc-remote-b.key
+      - xpack.security.remote_cluster_server.ssl.certificate=certs/es-acc-remote-b/es-acc-remote-b.crt
+      - xpack.security.remote_cluster_server.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.remote_cluster_server.ssl.verification_mode=none
+      - xpack.license.self_generated.type=${LICENSE}
+    mem_limit: ${MEM_LIMIT}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    networks:
+      - dod-elastic-acc
+
+  # ------------------------------------------------------------------------
+  # Dedicated monitoring-cluster. Alle Metricbeats schrijven hierheen in plaats
+  # van naar es-acc-central; es-acc-central bevraagt het via de cross-cluster alias
+  # "monitoring:". Daarmee is de lab-topologie gelijk aan de air-gapped
+  # omgeving: de CPM-weging leest monitoring-data altijd over de clustergrens.
+  # remote_cluster_server staat aan (poort 9443, API-key model), net als bij de
+  # twee remote data-clusters.
+  # ------------------------------------------------------------------------
+  es-acc-monitoring:
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+      - es-acc-monitoring-data:/usr/share/elasticsearch/data
+    ports:
+      - "${ES_ACC_MONITORING_PORT}:9200"
+    env_file: .env
+    environment:
+      - node.name=es-acc-monitoring
+      - cluster.name=acc-monitoring-cluster
+      # Bewust geen node.attr.dc: dit cluster is geen CPM-doelcluster.
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/es-acc-monitoring/es-acc-monitoring.key
+      - xpack.security.http.ssl.certificate=certs/es-acc-monitoring/es-acc-monitoring.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/es-acc-monitoring/es-acc-monitoring.key
+      - xpack.security.transport.ssl.certificate=certs/es-acc-monitoring/es-acc-monitoring.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - remote_cluster_server.enabled=true
+      - remote_cluster.host=0.0.0.0
+      - xpack.security.remote_cluster_server.ssl.enabled=true
+      - xpack.security.remote_cluster_server.ssl.key=certs/es-acc-monitoring/es-acc-monitoring.key
+      - xpack.security.remote_cluster_server.ssl.certificate=certs/es-acc-monitoring/es-acc-monitoring.crt
+      - xpack.security.remote_cluster_server.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.remote_cluster_server.ssl.verification_mode=none
+      - xpack.license.self_generated.type=${LICENSE}
+    mem_limit: 1073741824
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    networks:
+      - dod-elastic-acc
+
+  init:
+    depends_on:
+      es-acc-monitoring:
+        condition: service_healthy
+      es-acc-central:
+        condition: service_healthy
+      es-acc-remote-a:
+        condition: service_healthy
+      es-acc-remote-b:
+        condition: service_healthy
+    image: docker:27-cli
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - certs:/certs:ro
+      - ./setup/init-stack.sh:/setup/init-stack.sh:ro
+      - init-state:/setup/state
+      # rw: init-stack.sh schrijft de nieuwe ingest-API-keys terug in .env
+      - .:/workspace
+    working_dir: /workspace
+    user: "0"
+    env_file: .env
+    environment:
+      - CA_CERT=/certs/ca/ca.crt
+      - COMPOSE_PROJECT_NAME=dod-elastic-acc
+    command:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache bash curl
+        exec bash /setup/init-stack.sh
+    networks:
+      - dod-elastic-acc
+    restart: "no"
+
+  kibana:
+    depends_on:
+      es-acc-central:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    # Kibana mét de CPM-plugin. `image:` alleen zou de kale Elastic-image
+    # pakken; dan is de plugin na elke `up -d` weer weg en moet hij handmatig in
+    # de draaiende container geinstalleerd worden. Dockerfile.install pakt de
+    # gebouwde zip uit kibana_plugin/build/ uit en is daarmee ook air-gapped
+    # bruikbaar: geen clone, geen compileerslag.
+    build:
+      context: ../kibana_plugin
+      dockerfile: Dockerfile.install
+      args:
+        STACK_VERSION: ${STACK_VERSION}
+    image: cpm-kibana:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/kibana/config/certs
+      - ./config/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+      - kibana-acc-data:/usr/share/kibana/data
+    ports:
+      - "${KIBANA_ACC_PORT}:5601"
+    env_file: .env
+    environment:
+      - ELASTICSEARCH_HOSTS=https://es-acc-central:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+      - KIBANA_PASSWORD=${KIBANA_PASSWORD}
+      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=config/certs/ca/ca.crt
+      - SERVER_PUBLICBASEURL=http://localhost:${KIBANA_ACC_PORT}
+    mem_limit: ${MEM_LIMIT}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s -I http://localhost:5601 | grep -q 'HTTP/1.1 302 Found'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    networks:
+      - dod-elastic-acc
+
+  # ------------------------------------------------------------------------
+  # Eén CPM-managed Logstash per acc-cluster. Elke instantie haalt alleen de
+  # pipelines van zijn eigen cluster op (xpack.management.pipeline.id met het
+  # dc-prefix) en consumeert de "-acc" topics uit de gedeelde Kafka. Daarom
+  # hangen deze services óók aan het externe kafka-bus netwerk.
+  # ------------------------------------------------------------------------
+  logstash-acc-central:
+    depends_on:
+      es-acc-central:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/logstash/config/certs
+      - ./config/logstash-acc-central/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    env_file: .env
+    environment:
+      - LS_JAVA_OPTS=-Xms768m -Xmx768m
+      - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - VAR_API_KEY=${VAR_API_KEY_ACC_CENTRAL}
+    mem_limit: 1610612736
+    networks:
+      - dod-elastic-acc
+      - kafka-bus
+
+  logstash-acc-remote-a:
+    depends_on:
+      es-acc-central:
+        condition: service_healthy
+      es-acc-remote-a:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/logstash/config/certs
+      - ./config/logstash-acc-remote-a/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    env_file: .env
+    environment:
+      - LS_JAVA_OPTS=-Xms768m -Xmx768m
+      - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - VAR_API_KEY=${VAR_API_KEY_ACC_REMOTE_A}
+    mem_limit: 1610612736
+    networks:
+      - dod-elastic-acc
+      - kafka-bus
+
+  logstash-acc-remote-b:
+    depends_on:
+      es-acc-central:
+        condition: service_healthy
+      es-acc-remote-b:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/logstash/config/certs
+      - ./config/logstash-acc-remote-b/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    env_file: .env
+    environment:
+      - LS_JAVA_OPTS=-Xms768m -Xmx768m
+      - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - VAR_API_KEY=${VAR_API_KEY_ACC_REMOTE_B}
+    mem_limit: 1610612736
+    networks:
+      - dod-elastic-acc
+      - kafka-bus
+
+  # Stack Monitoring naar es-acc-central; CPM-scoring leest .monitoring-es-8-*,
+  # dus zonder deze drie blijven de acc-clusters ongescoord en verdeelt de
+  # routing-advisor niets.
+  metricbeat-acc-central:
+    depends_on:
+      es-acc-monitoring:
+        condition: service_healthy
+      es-acc-central:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/beats/metricbeat:${STACK_VERSION}
+    user: root
+    volumes:
+      - certs:/usr/share/metricbeat/config/certs
+      - ./config/metricbeat/metricbeat-acc-central.yml:/usr/share/metricbeat/metricbeat.yml:ro
+    env_file: .env
+    environment:
+      - MONITORING_PASSWORD=${MONITORING_PASSWORD}
+    mem_limit: 314572800
+    command: ["metricbeat", "-e", "--strict.perms=false"]
+    networks:
+      - dod-elastic-acc
+
+  metricbeat-acc-remote-a:
+    depends_on:
+      es-acc-monitoring:
+        condition: service_healthy
+      es-acc-remote-a:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/beats/metricbeat:${STACK_VERSION}
+    user: root
+    volumes:
+      - certs:/usr/share/metricbeat/config/certs
+      - ./config/metricbeat/metricbeat-acc-remote-a.yml:/usr/share/metricbeat/metricbeat.yml:ro
+    env_file: .env
+    environment:
+      - MONITORING_PASSWORD=${MONITORING_PASSWORD}
+    mem_limit: 314572800
+    command: ["metricbeat", "-e", "--strict.perms=false"]
+    networks:
+      - dod-elastic-acc
+
+  metricbeat-acc-remote-b:
+    depends_on:
+      es-acc-monitoring:
+        condition: service_healthy
+      es-acc-remote-b:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    image: docker.elastic.co/beats/metricbeat:${STACK_VERSION}
+    user: root
+    volumes:
+      - certs:/usr/share/metricbeat/config/certs
+      - ./config/metricbeat/metricbeat-acc-remote-b.yml:/usr/share/metricbeat/metricbeat.yml:ro
+    env_file: .env
+    environment:
+      - MONITORING_PASSWORD=${MONITORING_PASSWORD}
+    mem_limit: 314572800
+    command: ["metricbeat", "-e", "--strict.perms=false"]
+    networks:
+      - dod-elastic-acc
+
+networks:
+  dod-elastic-acc:
+    driver: bridge
+  # De Kafka van docker-local. Die stack moet draaien; controleer de naam met
+  # `docker network ls` als hij afwijkt en pas KAFKA_NETWORK in .env aan.
+  kafka-bus:
+    external: true
+    name: ${KAFKA_NETWORK}
+
+volumes:
+  certs:
+  es-acc-central-data:
+  es-acc-remote-a-data:
+  es-acc-remote-b-data:
+  es-acc-monitoring-data:
+  kibana-acc-data:
+  init-state:

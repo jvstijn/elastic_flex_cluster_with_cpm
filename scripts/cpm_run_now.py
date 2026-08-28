@@ -8,7 +8,7 @@ get picked up without waiting for the daily run.
 By default it force-executes the watchers (cpm-*). Use --workflows to run the
 native workflows (cpmw-*) via the Kibana Workflows API instead.
 
-Order: register-sync -> forecast-trigger -> scoring -> routing-advisor ->
+Order: registry-sync -> forecast-trigger -> scoring -> routing-advisor ->
 state-manager -> pipeline-manager. Each CPM index is refreshed between steps so
 the next stage sees fresh data. Failures are reported but do not abort the chain.
 
@@ -30,7 +30,9 @@ import urllib.error
 import urllib.request
 
 CHAIN = [
-    "register-sync",
+    # De watcher heet cpm-registry-sync; "register-sync" gaf een 404 en liet
+    # cpm-cluster-registry leeg, waardoor de state-manager niets kon toewijzen.
+    "registry-sync",
     "forecast-trigger",
     "scoring",
     "routing-advisor",

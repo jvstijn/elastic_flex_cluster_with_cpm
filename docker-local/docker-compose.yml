@@ -179,8 +179,72 @@ services:
     networks:
       - dod-elastic
 
+  # ------------------------------------------------------------------------
+  # Dedicated monitoring-cluster. Alle Metricbeats schrijven hierheen in plaats
+  # van naar es-central; es-central bevraagt het via de cross-cluster alias
+  # "monitoring:". Daarmee is de lab-topologie gelijk aan de air-gapped
+  # omgeving: de CPM-weging leest monitoring-data altijd over de clustergrens.
+  # remote_cluster_server staat aan (poort 9443, API-key model), net als bij de
+  # twee remote data-clusters.
+  # ------------------------------------------------------------------------
+  es-monitoring:
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+      - es-monitoring-data:/usr/share/elasticsearch/data
+    ports:
+      - "${ES_MONITORING_PORT}:9200"
+    env_file: .env
+    environment:
+      - node.name=es-monitoring
+      - cluster.name=monitoring-cluster
+      # Bewust geen node.attr.dc: dit cluster is geen CPM-doelcluster.
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/es-monitoring/es-monitoring.key
+      - xpack.security.http.ssl.certificate=certs/es-monitoring/es-monitoring.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/es-monitoring/es-monitoring.key
+      - xpack.security.transport.ssl.certificate=certs/es-monitoring/es-monitoring.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - remote_cluster_server.enabled=true
+      - remote_cluster.host=0.0.0.0
+      - xpack.security.remote_cluster_server.ssl.enabled=true
+      - xpack.security.remote_cluster_server.ssl.key=certs/es-monitoring/es-monitoring.key
+      - xpack.security.remote_cluster_server.ssl.certificate=certs/es-monitoring/es-monitoring.crt
+      - xpack.security.remote_cluster_server.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.remote_cluster_server.ssl.verification_mode=none
+      - xpack.license.self_generated.type=${LICENSE}
+    mem_limit: 1073741824
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+    networks:
+      - dod-elastic
+
   init:
     depends_on:
+      es-monitoring:
+        condition: service_healthy
       es-central:
         condition: service_healthy
       es-remote-a:
@@ -193,7 +257,8 @@ services:
       - certs:/certs:ro
       - ./setup/init-stack.sh:/setup/init-stack.sh:ro
       - init-state:/setup/state
-      - .:/workspace:ro
+      # rw: init-stack.sh schrijft de nieuwe ingest-API-keys terug in .env
+      - .:/workspace
     working_dir: /workspace
     user: "0"
     env_file: .env
@@ -216,7 +281,17 @@ services:
         condition: service_healthy
       init:
         condition: service_completed_successfully
-    image: docker.elastic.co/kibana/kibana:${STACK_VERSION}
+    # Kibana mét de CPM-plugin. `image:` alleen zou de kale Elastic-image
+    # pakken; dan is de plugin na elke `up -d` weer weg en moet hij handmatig in
+    # de draaiende container geinstalleerd worden. Dockerfile.install pakt de
+    # gebouwde zip uit kibana_plugin/build/ uit en is daarmee ook air-gapped
+    # bruikbaar: geen clone, geen compileerslag.
+    build:
+      context: ../kibana_plugin
+      dockerfile: Dockerfile.install
+      args:
+        STACK_VERSION: ${STACK_VERSION}
+    image: cpm-kibana:${STACK_VERSION}
     volumes:
       - certs:/usr/share/kibana/config/certs
       - ./config/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
@@ -422,11 +497,11 @@ services:
       - ./config/logstash-central/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
     env_file: .env
     environment:
-      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - LS_JAVA_OPTS=-Xms768m -Xmx768m
       - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - VAR_API_KEY=${VAR_API_KEY_CENTRAL}
-    mem_limit: ${MEM_LIMIT}
+    mem_limit: 1610612736
     networks:
       - dod-elastic
 
@@ -450,11 +525,11 @@ services:
       - ./config/logstash-remote-a/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
     env_file: .env
     environment:
-      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - LS_JAVA_OPTS=-Xms768m -Xmx768m
       - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - VAR_API_KEY=${VAR_API_KEY_REMOTE_A}
-    mem_limit: ${MEM_LIMIT}
+    mem_limit: 1610612736
     networks:
       - dod-elastic
 
@@ -478,11 +553,11 @@ services:
       - ./config/logstash-remote-b/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
     env_file: .env
     environment:
-      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - LS_JAVA_OPTS=-Xms768m -Xmx768m
       - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - VAR_API_KEY=${VAR_API_KEY_REMOTE_B}
-    mem_limit: ${MEM_LIMIT}
+    mem_limit: 1610612736
     networks:
       - dod-elastic
 
@@ -515,6 +590,8 @@ services:
 
   metricbeat-central:
     depends_on:
+      es-monitoring:
+        condition: service_healthy
       es-central:
         condition: service_healthy
       init:
@@ -534,6 +611,8 @@ services:
 
   metricbeat-remote-a:
     depends_on:
+      es-monitoring:
+        condition: service_healthy
       es-remote-a:
         condition: service_healthy
       init:
@@ -553,6 +632,8 @@ services:
 
   metricbeat-remote-b:
     depends_on:
+      es-monitoring:
+        condition: service_healthy
       es-remote-b:
         condition: service_healthy
       init:
@@ -579,6 +660,7 @@ volumes:
   es-central-data:
   es-remote-a-data:
   es-remote-b-data:
+  es-monitoring-data:
   kibana-data:
   kafka1-data:
   kafka2-data:

@@ -1,0 +1,40 @@
+---
+# docker-acc stack — drie acc-clusters met CPM op es-acc-central
+cpm_env_file: "{{ playbook_dir }}/../docker-acc/.env"
+
+elastic_usr: elastic
+elastic_pw: "{{ lookup('ini', 'ELASTIC_PASSWORD type=properties file=' ~ cpm_env_file) }}"
+kibana_password: "{{ lookup('ini', 'KIBANA_PASSWORD type=properties file=' ~ cpm_env_file) }}"
+
+es_acc_central_port: "{{ lookup('ini', 'ES_ACC_CENTRAL_PORT type=properties file=' ~ cpm_env_file) }}"
+elastic_base_url: "https://localhost:{{ es_acc_central_port }}"
+kibana_url: "http://localhost:{{ lookup('ini', 'KIBANA_ACC_PORT type=properties file=' ~ cpm_env_file) }}"
+cpm_validate_certs: false
+
+webhook_host: es-acc-central
+webhook_port: 9200
+
+# Monitoring draait op een eigen cluster; es-acc-central bereikt het via de
+# cross-cluster alias "monitoring:". Zonder dat prefix zoeken de ML-datafeeds
+# lokaal, vinden ze niets en blijven alle cluster-scores op 0.
+cpm_monitoring_index: "monitoring:.monitoring-es-8-*"
+cpm_ml_reinstall: false
+cpm_clean_indices: false
+cpm_datafeed_start: ""
+
+# registry-sync zet een pas ontdekt cluster op active: false — een operator
+# beslist wie meedoet. Voor acc doen alle drie mee, dus zetten we het hier zodat
+# `--tags registry` het elke run bevestigt.
+cpm_cluster_registry:
+  acc-central-cluster:
+    ingest_hosts: "https://es-acc-central"
+    dc: acc-central
+    active: true
+  acc-remote-a:
+    ingest_hosts: "https://es-acc-remote-a"
+    dc: acc-a
+    active: true
+  acc-remote-b:
+    ingest_hosts: "https://es-acc-remote-b"
+    dc: acc-b
+    active: true

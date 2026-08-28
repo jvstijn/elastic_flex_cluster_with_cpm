@@ -6,7 +6,7 @@ metricbeat.modules:
   - module: elasticsearch
     xpack.enabled: true
     period: 10s
-    hosts: ["https://es-central:9200"]
+    hosts: ["https://es-acc-remote-b:9200"]
     username: "remote_monitoring_user"
     password: "${MONITORING_PASSWORD}"
     ssl.certificate_authorities: ["/usr/share/metricbeat/config/certs/ca/ca.crt"]
@@ -15,7 +15,7 @@ metricbeat.modules:
 # Monitoring-data gaat naar het aparte monitoring-cluster; de module
 # hierboven scrapet nog steeds het eigen cluster.
 output.elasticsearch:
-  hosts: ["https://es-monitoring:9200"]
+  hosts: ["https://es-acc-monitoring:9200"]
   username: "remote_monitoring_agent"
   password: "${MONITORING_PASSWORD}"
   ssl.certificate_authorities: ["/usr/share/metricbeat/config/certs/ca/ca.crt"]

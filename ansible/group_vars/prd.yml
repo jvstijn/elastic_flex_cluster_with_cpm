@@ -1,0 +1,3 @@
+---
+# Productie: topics hebben geen extensie.
+kafka_topic_extension: ""

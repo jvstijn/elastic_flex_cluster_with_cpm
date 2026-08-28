@@ -16,10 +16,12 @@
           type: keyword
         kafka_bootstrap_mld:
           type: keyword
+        kafka_topic_extension:
+          type: keyword
     status_code: [200, 201, 400]
   tags: [seed]
 
-- name: Seed CPM pipeline templates
+- name: Seed CPM pipeline templates (incl. kafka_topic_extension uit de inventory)
   ansible.builtin.uri:
     url: "{{ elastic_base_url }}/cpm-pipeline-templates/_doc/{{ item.id }}"
     method: PUT
@@ -28,7 +30,9 @@
     force_basic_auth: true
     validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
-    body: "{{ lookup('file', role_path + '/files/' + item.file) }}"
+    body: >-
+      {{ (lookup('file', role_path + '/files/' + item.file) | from_json)
+         | combine({'kafka_topic_extension': kafka_topic_extension}) }}
     status_code: [200, 201]
   loop: "{{ cpm_pipeline_templates }}"
   loop_control:
@@ -59,4 +63,19 @@
     body: "{{ lookup('file', role_path + '/files/json/routing_config_global.json') }}"
     status_code: [200, 201]
   when: cpm_routing_global_check.status == 404
+  tags: [seed]
+
+- name: Set the Kafka consumer group on the global routing config
+  ansible.builtin.uri:
+    url: "{{ elastic_base_url }}/cpm-routing-config/_update/_global?refresh=wait_for"
+    method: POST
+    user: "{{ elastic_usr }}"
+    password: "{{ elastic_pw }}"
+    force_basic_auth: true
+    validate_certs: "{{ cpm_validate_certs }}"
+    body_format: json
+    body:
+      doc:
+        kafka_group_id: "{{ cpm_kafka_group_id }}"
+    status_code: [200, 201]
   tags: [seed]

@@ -164,8 +164,8 @@ Rendert **één** pipeline met **twee** Kafka-inputblokken:
 ```text
 if ('dedicated'.equals(ptype)) {
 
-  // Bepaal topic uit state-entry
-  String topic = streamType + '-' + dataset + '-' + namespace;
+  // Bepaal topic uit state-entry (+ omgevingsextensie, zie 5.3)
+  String topic = streamType + '-' + dataset + '-' + namespace + topicExt;
 
   // Vervang template-placeholders
   config = dedicatedTpl
@@ -190,7 +190,8 @@ Rendert **twee** pipelines — één per Kafka-cluster:
 ```text
 } else {
 
-  // Verzamel en dedupliceer alle topics voor deze pipeline_id
+  // Verzamel en dedupliceer alle topics voor deze pipeline_id; elk topic
+  // krijgt de omgevingsextensie erachter (zie 5.3)
   Set topicSet = ...;
   String topicsList = '"logs-foo-bar", "metrics-baz-qux", ...';
 
@@ -212,6 +213,44 @@ Rendert **twee** pipelines — één per Kafka-cluster:
   inactivePipelineIds.add(dc + '_cpm-catchall-' + clusterId);
 }
 ```
+
+## 5.3 Topic-extensie per omgeving
+
+Acceptatie en productie delen dezelfde Kafka, maar niet dezelfde topics: in
+acceptatie eindigt elke topicnaam op `-acc`, in productie heeft hij geen
+extensie. De watcher plakt die extensie zelf achter elke naam die hij rendert —
+zowel achter `__TOPIC__` (dedicated) als achter elk topic in `__TOPICS_LIST__`
+(catchall).
+
+De waarde komt uit het template-document, net als `kafka_bootstrap_dhl`:
+
+```text
+def kte = hit._source.kafka_topic_extension;
+if (kte != null) topicExt = (String)kte;
+...
+if (!topicExt.isEmpty() && !t.endsWith(topicExt)) { t = t + topicExt; }
+```
+
+Wie die waarde zet: Ansible, bij het seeden van de templates
+(`tasks/seed_data.yml`), uit `kafka_topic_extension` in de inventory.
+
+| inventory | groep | `kafka_topic_extension` | topic |
+|---|---|---|---|
+| `inventories/acc` | `acc` | `-acc` | `logs-nginx-prod-acc` |
+| `inventories/kaposi` | `prd` | `""` | `logs-nginx-prod` |
+| `inventories/local` | — | role-default `""` | `logs-nginx-prod` |
+
+Omdat de extensie in het document staat en niet in de watcher zelf, kun je hem
+runtime wijzigen met een `PUT` op `cpm-pipeline-templates` zonder de watchers
+opnieuw uit te rollen. De eerstvolgende ansible-run zet hem weer terug naar wat
+de inventory zegt.
+
+De data streams in Elasticsearch houden hun kale naam: de extensie zit alleen op
+het Kafka-topic, niet op `data_stream_dataset`. `logs-nginx-prod-acc` landt dus
+in de data stream `logs-nginx-prod` op een acc-cluster.
+
+De bijbehorende topics maak je met `scripts/create_kafka_topics.py --source
+kafka --suffix=-acc`.
 
 ---
 
@@ -332,6 +371,34 @@ State-document-ID: `{data_stream_type}-{dataset}-{namespace}`
 Geen wijzigingen aan ML-jobs of datafeeds nodig voor dual-Kafka-ondersteuning.
 
 Alle vijf CPM ML-detectors (`cpm-store-size`, `cpm-jvm-heap`, `cpm-shard-count`, `cpm-cluster-event-rate`, `cpm-event-rate`) lezen geaggregeerde metriek uit `.monitoring-es-8-*` aan de Elasticsearch-kant. Routingbeslissingen en scoring zijn gebaseerd op totale ingest zoals waargenomen in ES, niet op welk Kafka-cluster de data oorspronkelijk vandaan kwam.
+
+## Waar monitoring staat
+
+Monitoring draait op een eigen cluster. Elke Metricbeat scrapet zijn eigen
+cluster en schrijft naar dat monitoring-cluster; het centrale cluster leest het
+terug via de cross-cluster alias `monitoring:`. Zo komt CPM aan zowel het bestaan
+van een stream als aan het cluster waar hij thuishoort.
+
+Twee plekken moeten daarbij op dezelfde index wijzen:
+
+| onderdeel | index | herkomst |
+|---|---|---|
+| watchers | `monitoring:.monitoring-es-8-*` | hard in de watcher-templates |
+| ML-datafeeds en veldprobe | `{{ cpm_monitoring_index }}` | inventory of role-defaults |
+
+Staat `cpm_monitoring_index` zonder het `monitoring:` prefix terwijl monitoring
+op een apart cluster draait, dan zoeken de datafeeds lokaal, vinden ze niets en
+blijven alle cluster-scores op 0. De watchers draaien dan gewoon door, dus je
+ziet geen fout: alleen een weging die nergens onderscheid maakt.
+
+Bij het invoeren van een apart monitoring-cluster in een bestaande omgeving:
+
+1. Zet `cpm_monitoring_index` om in de inventory.
+2. Verhuis de historie met `scripts/copy_monitoring_history.py`; zonder historie
+   heeft de ML geen model en dus geen forecast.
+3. Draai de rol met `-e cpm_ml_reinstall=true`. Een lopende datafeed leest niet
+   met terugwerkende kracht, dus zonder herinstallatie blijft de oude historie
+   ongebruikt.
 
 ---
 

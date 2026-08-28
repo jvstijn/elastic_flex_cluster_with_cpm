@@ -1,10 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Initialiseert de acc-stack. Doet hetzelfde als docker-local/setup/init-stack.sh,
+# plus de drie stappen die daar nog handwerk zijn (zie docs/dagboek/2026-08-18.md,
+# "Herbouw-stappen automatiseren"):
+#   - de rol cpm_logstash_pipelines + user cpm_logstash aanmaken
+#   - per cluster een ingest-API-key aanmaken
+#   - die keys terugschrijven in .env als VAR_API_KEY_ACC_*
+#
+# Draait één keer; het marker-bestand staat op het init-state volume. Opnieuw
+# uitvoeren: `docker compose -f docker-acc/docker-compose.yml down -v` of het
+# marker-bestand weghalen.
+
 CA="${CA_CERT:-/certs/ca/ca.crt}"
 MARKER="/setup/state/.stack-ready"
 STATE_DIR="/setup/state"
 ENV_FILE="/workspace/.env"
+
+HOSTS="es-acc-central es-acc-remote-a es-acc-remote-b"
 
 mkdir -p "${STATE_DIR}"
 
@@ -52,13 +65,13 @@ set_builtin_password() {
 create_monitoring_users() {
   echo "Configuring monitoring users..."
 
-  for host in es-central es-remote-a es-remote-b es-monitoring; do
+  for host in ${HOSTS} es-acc-monitoring; do
     set_builtin_password "${host}" remote_monitoring_user "${MONITORING_PASSWORD}"
   done
 
   # De agent-user is de OUTPUT-user van Metricbeat en moet dus op het
-  # monitoring-cluster staan, niet op es-central.
-  es_curl es-monitoring "/_security/user/remote_monitoring_agent" -X PUT \
+  # monitoring-cluster staan, niet op es-acc-central.
+  es_curl es-acc-monitoring "/_security/user/remote_monitoring_agent" -X PUT \
     -H "Content-Type: application/json" \
     -d "{
       \"password\": \"${MONITORING_PASSWORD}\",
@@ -68,17 +81,16 @@ create_monitoring_users() {
 }
 
 # Centralized pipeline management: Logstash mag alleen pipelines lezen, en heeft
-# cluster:monitor nodig voor de license-check op /. Zonder deze user stopt elke
-# CPM-Logstash met "unable to authenticate user [cpm_logstash]" -> FATAL.
+# cluster:monitor nodig voor de license-check op /.
 create_cpm_logstash_user() {
-  echo "Creating cpm_logstash role and user on es-central..."
-  es_curl es-central "/_security/role/cpm_logstash_pipelines" -X PUT \
+  echo "Creating cpm_logstash role and user on es-acc-central..."
+  es_curl es-acc-central "/_security/role/cpm_logstash_pipelines" -X PUT \
     -H "Content-Type: application/json" \
     -d '{
       "cluster": ["monitor", "manage_logstash_pipelines"]
     }' >/dev/null
 
-  es_curl es-central "/_security/user/cpm_logstash" -X PUT \
+  es_curl es-acc-central "/_security/user/cpm_logstash" -X PUT \
     -H "Content-Type: application/json" \
     -d "{
       \"password\": \"${LOGSTASH_PASSWORD}\",
@@ -133,13 +145,14 @@ put_env_var() {
 create_ingest_keys() {
   echo "Creating per-cluster ingest API keys..."
   local central_key remote_a_key remote_b_key
-  central_key="$(encoded_of "$(create_ingest_api_key es-central cpm-ingest-central)")"
-  remote_a_key="$(encoded_of "$(create_ingest_api_key es-remote-a cpm-ingest-remote-a)")"
-  remote_b_key="$(encoded_of "$(create_ingest_api_key es-remote-b cpm-ingest-remote-b)")"
 
-  for pair in "VAR_API_KEY_CENTRAL:${central_key}" \
-              "VAR_API_KEY_REMOTE_A:${remote_a_key}" \
-              "VAR_API_KEY_REMOTE_B:${remote_b_key}"; do
+  central_key="$(encoded_of "$(create_ingest_api_key es-acc-central cpm-ingest-acc-central)")"
+  remote_a_key="$(encoded_of "$(create_ingest_api_key es-acc-remote-a cpm-ingest-acc-remote-a)")"
+  remote_b_key="$(encoded_of "$(create_ingest_api_key es-acc-remote-b cpm-ingest-acc-remote-b)")"
+
+  for pair in "VAR_API_KEY_ACC_CENTRAL:${central_key}" \
+              "VAR_API_KEY_ACC_REMOTE_A:${remote_a_key}" \
+              "VAR_API_KEY_ACC_REMOTE_B:${remote_b_key}"; do
     local k="${pair%%:*}" v="${pair#*:}"
     if [ -z "${v}" ]; then
       echo "WARN: geen key gekregen voor ${k}"
@@ -149,9 +162,10 @@ create_ingest_keys() {
     put_env_var "${k}" "${v}"
   done
 
+  echo "Ingest keys staan ook in ${STATE_DIR}/api-keys.env"
   echo "Herstart de logstash-services zodat ze de nieuwe VAR_API_KEY_* oppikken:"
-  echo "  docker compose -f docker-local/docker-compose.yml up -d --force-recreate \\"
-  echo "      logstash-central logstash-remote-a logstash-remote-b"
+  echo "  docker compose -f docker-acc/docker-compose.yml up -d --force-recreate \\"
+  echo "      logstash-acc-central logstash-acc-remote-a logstash-acc-remote-b"
 }
 
 create_ccs_api_key() {
@@ -175,27 +189,27 @@ create_ccs_api_key() {
 add_keystore_credential() {
   local alias="$1"
   local encoded="$2"
-  echo "Adding cross-cluster API key for ${alias} to es-central keystore"
-  docker compose exec -T es-central \
+  echo "Adding cross-cluster API key for ${alias} to es-acc-central keystore"
+  docker compose exec -T es-acc-central \
     bash -c "echo '${encoded}' | bin/elasticsearch-keystore add --stdin --force cluster.remote.${alias}.credentials"
 }
 
 reload_secure_settings() {
-  echo "Reloading secure settings on es-central..."
-  es_curl es-central "/_nodes/reload_secure_settings" -X POST \
+  echo "Reloading secure settings on es-acc-central..."
+  es_curl es-acc-central "/_nodes/reload_secure_settings" -X POST \
     -H "Content-Type: application/json" \
     -d '{}'
 }
 
 configure_remote_clusters() {
-  echo "Configuring remote cluster connections on es-central..."
-  es_curl es-central "/_cluster/settings" -X PUT \
+  echo "Configuring remote cluster connections on es-acc-central..."
+  es_curl es-acc-central "/_cluster/settings" -X PUT \
     -H "Content-Type: application/json" \
     -d '{
       "persistent": {
-        "cluster.remote.remote_a.seeds": ["es-remote-a:9443"],
-        "cluster.remote.remote_b.seeds": ["es-remote-b:9443"],
-        "cluster.remote.monitoring.seeds": ["es-monitoring:9443"],
+        "cluster.remote.acc_remote_a.seeds": ["es-acc-remote-a:9443"],
+        "cluster.remote.acc_remote_b.seeds": ["es-acc-remote-b:9443"],
+        "cluster.remote.monitoring.seeds": ["es-acc-monitoring:9443"],
         "cluster.remote.monitoring.skip_unavailable": true
       }
     }'
@@ -203,7 +217,7 @@ configure_remote_clusters() {
 
 create_ccs_role() {
   echo "Creating CCS role for elastic user convenience..."
-  es_curl es-central "/_security/role/ccs_admin" -X PUT \
+  es_curl es-acc-central "/_security/role/ccs_admin" -X PUT \
     -H "Content-Type: application/json" \
     -d '{
       "cluster": ["monitor"],
@@ -215,14 +229,14 @@ create_ccs_role() {
       ],
       "remote_indices": [
         {
-          "clusters": ["remote_a", "remote_b", "monitoring"],
+          "clusters": ["acc_remote_a", "acc_remote_b", "monitoring"],
           "names": ["*"],
           "privileges": ["read", "view_index_metadata", "monitor"]
         }
       ]
     }' >/dev/null || true
 
-  es_curl es-central "/_security/user/elastic" -X PUT \
+  es_curl es-acc-central "/_security/user/elastic" -X PUT \
     -H "Content-Type: application/json" \
     -d '{
       "roles": ["superuser", "ccs_admin"],
@@ -231,30 +245,12 @@ create_ccs_role() {
     }' >/dev/null || true
 }
 
-seed_logstash_pipeline() {
-  echo "Seeding bootstrap Logstash pipeline on es-central..."
-  local modified
-  modified="$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")"
-  es_curl es-central "/_logstash/pipeline/kafka-to-central" -X PUT \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"pipeline\": \"input {\\n  kafka {\\n    bootstrap_servers => \\\"kafka:9092\\\"\\n    topics => [\\\"logs-beats-raw\\\"]\\n    group_id => \\\"logstash-managed\\\"\\n    codec => json\\n    decorate_events => true\\n  }\\n}\\n\\noutput {\\n  elasticsearch {\\n    hosts => [\\\"https://es-central:9200\\\"]\\n    user => \\\"elastic\\\"\\n    password => \\\"${ELASTIC_PASSWORD}\\\"\\n    ssl_certificate_verification => true\\n    cacert => \\\"/usr/share/logstash/config/certs/ca/ca.crt\\\"\\n    data_stream => true\\n    data_stream_type => \\\"logs\\\"\\n    data_stream_dataset => \\\"generic\\\"\\n    data_stream_namespace => \\\"default\\\"\\n  }\\n}\\n\",
-      \"pipeline_settings\": {
-        \"pipeline.workers\": 2,
-        \"queue.type\": \"persisted\"
-      },
-      \"pipeline_metadata\": {},
-      \"username\": \"elastic\",
-      \"last_modified\": \"${modified}\"
-    }"
-}
-
 verify_remote_clusters() {
   echo "Verifying remote cluster connections..."
-  es_curl es-central "/_remote/info?pretty"
+  es_curl es-acc-central "/_remote/info?pretty"
 }
 
-# De keystore van es-central staat in de containerlaag, niet op een volume.
+# De keystore van es-acc-central staat in de containerlaag, niet op een volume.
 # Zodra de container opnieuw wordt aangemaakt (en dat gebeurt al als .env
 # wijzigt) zijn de cross-cluster credentials weg, valt elke CCS-search stil en
 # ziet CPM geen monitoring-data meer. Deze stap draait daarom bij ELKE start.
@@ -267,18 +263,18 @@ ensure_ccs_credentials() {
 
   local changed=0
   if [ -z "${CCS_KEY_MONITORING:-}" ]; then
-    echo "Creating cross-cluster API key on es-monitoring..."
-    CCS_KEY_MONITORING="$(encoded_of "$(create_ccs_api_key es-monitoring ccs-from-central-monitoring)")"
+    echo "Creating cross-cluster API key on es-acc-monitoring..."
+    CCS_KEY_MONITORING="$(encoded_of "$(create_ccs_api_key es-acc-monitoring ccs-from-acc-central-monitoring)")"
     changed=1
   fi
   if [ -z "${CCS_KEY_REMOTE_A:-}" ]; then
-    echo "Creating cross-cluster API key on es-remote-a..."
-    CCS_KEY_REMOTE_A="$(encoded_of "$(create_ccs_api_key es-remote-a ccs-from-central-remote_a)")"
+    echo "Creating cross-cluster API key on es-acc-remote-a..."
+    CCS_KEY_REMOTE_A="$(encoded_of "$(create_ccs_api_key es-acc-remote-a ccs-from-acc-central-acc_remote_a)")"
     changed=1
   fi
   if [ -z "${CCS_KEY_REMOTE_B:-}" ]; then
-    echo "Creating cross-cluster API key on es-remote-b..."
-    CCS_KEY_REMOTE_B="$(encoded_of "$(create_ccs_api_key es-remote-b ccs-from-central-remote_b)")"
+    echo "Creating cross-cluster API key on es-acc-remote-b..."
+    CCS_KEY_REMOTE_B="$(encoded_of "$(create_ccs_api_key es-acc-remote-b ccs-from-acc-central-acc_remote_b)")"
     changed=1
   fi
 
@@ -292,20 +288,20 @@ ensure_ccs_credentials() {
   fi
 
   add_keystore_credential monitoring "${CCS_KEY_MONITORING}"
-  add_keystore_credential remote_a "${CCS_KEY_REMOTE_A}"
-  add_keystore_credential remote_b "${CCS_KEY_REMOTE_B}"
+  add_keystore_credential acc_remote_a "${CCS_KEY_REMOTE_A}"
+  add_keystore_credential acc_remote_b "${CCS_KEY_REMOTE_B}"
 
   reload_secure_settings
   configure_remote_clusters
 }
 
-for host in es-central es-remote-a es-remote-b es-monitoring; do
+for host in ${HOSTS} es-acc-monitoring; do
   wait_for_es "${host}"
 done
 
 # Trial eerst: cross-cluster API-keys vragen een licentie die verder gaat
 # dan basic.
-for host in es-central es-remote-a es-remote-b es-monitoring; do
+for host in ${HOSTS} es-acc-monitoring; do
   start_trial "${host}"
 done
 
@@ -317,10 +313,10 @@ if [ -f "${MARKER}" ]; then
 fi
 
 
-set_builtin_password es-central kibana_system "${KIBANA_PASSWORD}"
+set_builtin_password es-acc-central kibana_system "${KIBANA_PASSWORD}"
 # Stack Monitoring in Kibana bevraagt het monitoring-cluster rechtstreeks.
-set_builtin_password es-monitoring kibana_system "${KIBANA_PASSWORD}"
-set_builtin_password es-central logstash_system "${LOGSTASH_PASSWORD}"
+set_builtin_password es-acc-monitoring kibana_system "${KIBANA_PASSWORD}"
+set_builtin_password es-acc-central logstash_system "${LOGSTASH_PASSWORD}"
 
 
 create_monitoring_users
@@ -328,7 +324,6 @@ create_cpm_logstash_user
 create_ingest_keys
 
 create_ccs_role
-seed_logstash_pipeline
 verify_remote_clusters
 
 touch "${MARKER}"

@@ -1,0 +1,27 @@
+# Install the pre-built CPM plugin into the official Kibana image.
+#
+# Unlike Dockerfile (which clones elastic/kibana and compiles the plugin from
+# source, ~20 GB and network-bound) this only unpacks an existing zip from
+# build/. It is what docker-local/ and docker-acc/ reference from their `build:`
+# section, so the plugin survives every `docker compose up -d` instead of having
+# to be re-installed into a running container by hand.
+#
+# The zip must match STACK_VERSION exactly — Kibana refuses a plugin whose
+# kibanaVersion differs. Build a missing one first:
+#   KIBANA_VERSION=<version> ./scripts/build_kibana_cpm_plugin.sh
+#
+# Standalone:
+#   docker build -f Dockerfile.install --build-arg STACK_VERSION=9.4.1 \
+#       -t cpm-kibana:9.4.1 .
+
+ARG STACK_VERSION=9.4.1
+
+FROM docker.elastic.co/kibana/kibana:${STACK_VERSION}
+ARG STACK_VERSION
+
+USER root
+COPY build/cpm-${STACK_VERSION}.zip /tmp/cpm.zip
+RUN bin/kibana-plugin install "file:///tmp/cpm.zip" \
+  && rm -f /tmp/cpm.zip \
+  && chown -R kibana:root plugins
+USER kibana

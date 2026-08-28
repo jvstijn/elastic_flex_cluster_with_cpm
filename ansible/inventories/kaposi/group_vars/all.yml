@@ -14,6 +14,9 @@ cpm_validate_certs: true
 webhook_host: es-central-01
 webhook_port: 9200
 
+# Geen prefix: hier staat monitoring nog op es-central-01 zelf. Draait het daar
+# straks op een eigen cluster, zet er dan "monitoring:" voor, anders lezen de
+# ML-datafeeds de verkeerde index (de watchers gebruiken de alias al wel).
 cpm_monitoring_index: ".monitoring-es-8-*"
 cpm_ml_reinstall: false
 cpm_clean_indices: false
