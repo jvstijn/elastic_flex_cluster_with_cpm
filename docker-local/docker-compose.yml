@@ -205,7 +205,7 @@ services:
       - discovery.type=single-node
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - bootstrap.memory_lock=true
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=true
       - xpack.security.http.ssl.key=certs/es-monitoring/es-monitoring.key
@@ -224,7 +224,11 @@ services:
       - xpack.security.remote_cluster_server.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.remote_cluster_server.ssl.verification_mode=none
       - xpack.license.self_generated.type=${LICENSE}
-    mem_limit: 1073741824
+    # Alle Metricbeats schrijven hierheen op een 10s-interval; met 512m heap
+    # werd dit cluster door de kernel afgeschoten (exit 137). Valt het om,
+    # dan levert de cross-cluster search een leeg resultaat op in plaats van
+    # een fout, want skip_unavailable staat aan.
+    mem_limit: 2147483648
     ulimits:
       memlock:
         soft: -1
