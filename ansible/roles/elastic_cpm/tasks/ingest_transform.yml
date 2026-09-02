@@ -43,7 +43,7 @@
   block:
     - name: Stop watcher status transform before update
       ansible.builtin.uri:
-        url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync/_stop?wait_for_completion=true"
+        url: "{{ elastic_base_url }}/_transform/cpm-watcher-status-sync/_stop?force=true&wait_for_completion=true"
         method: POST
         user: "{{ elastic_usr }}"
         password: "{{ elastic_pw }}"

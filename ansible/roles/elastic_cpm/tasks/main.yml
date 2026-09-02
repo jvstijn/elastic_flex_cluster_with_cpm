@@ -3,9 +3,15 @@
 
 - name: Install CPM on central Elasticsearch
   block:
+    # 'always' hielp hier niet: tags op een include_tasks gelden niet voor de
+    # taken erin, dus bij --tags ml werd de probe overgeslagen en klapte het
+    # playbook op een ongedefinieerde cpm_field_cluster_id. De taken in
+    # monitoring_fields.yml dragen nu zelf [probe, ml]. Bewust geen 'always':
+    # alleen de ML-datafeeds hebben die veldnamen nodig, en zo hoeft --tags
+    # exclusions monitoring niet bereikbaar te hebben.
     - name: Probe Stack Monitoring field paths
       ansible.builtin.include_tasks: monitoring_fields.yml
-      tags: [probe, always]
+      tags: [probe, ml]
 
     - name: Create config indices
       ansible.builtin.include_tasks: indices.yml

@@ -37,7 +37,10 @@
           "node",
           "user",
           "state",
-          "@timestamp"
+          "@timestamp",
+          "exception",
+          "metadata",
+          "vars"
         ],
         "ignore_missing": true
       }

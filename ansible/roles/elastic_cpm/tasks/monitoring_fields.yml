@@ -2,6 +2,7 @@
 - name: Resolve monitoring search URL
   ansible.builtin.set_fact:
     cpm_monitoring_search_url: "{{ lookup('template', 'cpm_monitoring_search_url.j2') | trim }}"
+  tags: [probe, ml]
 
 - name: Probe monitoring cluster ID field
   ansible.builtin.uri:
@@ -24,6 +25,7 @@
         - elasticsearch.cluster.id
     status_code: [200]
   register: cpm_probe_cluster_id
+  tags: [probe, ml]
 
 - name: Set cluster ID field fact
   ansible.builtin.set_fact:
@@ -31,6 +33,7 @@
       {{ 'cluster_uuid' if 'cluster_uuid' in (cpm_probe_cluster_id.json.hits.hits[0]._source | default({}))
       else 'elasticsearch.cluster.id' }}
   when: cpm_probe_cluster_id.json.hits.hits | length > 0
+  tags: [probe, ml]
 
 - name: Probe JVM heap field candidates
   ansible.builtin.uri:
@@ -56,6 +59,7 @@
   loop: "{{ cpm_field_heap_candidates }}"
   register: cpm_probe_heap
   failed_when: false
+  tags: [probe, ml]
 
 - name: Pick JVM heap field
   ansible.builtin.set_fact:
@@ -68,6 +72,7 @@
     - ((item.json.aggregations | default({})).probe | default({})).value is not none
   loop_control:
     label: "{{ item.item }}"
+  tags: [probe, ml]
 
 - name: Probe shard count field candidates
   ansible.builtin.uri:
@@ -93,6 +98,7 @@
   loop: "{{ cpm_field_shards_candidates }}"
   register: cpm_probe_shards
   failed_when: false
+  tags: [probe, ml]
 
 - name: Pick shard count field
   ansible.builtin.set_fact:
@@ -105,6 +111,7 @@
     - ((item.json.aggregations | default({})).probe | default({})).value is not none
   loop_control:
     label: "{{ item.item }}"
+  tags: [probe, ml]
 
 - name: Probe write queue field
   ansible.builtin.uri:
@@ -127,6 +134,7 @@
         - elasticsearch.node.stats.thread_pool.write.queue.count
     status_code: [200]
   register: cpm_probe_write_queue
+  tags: [probe, ml]
 
 - name: Set write queue field fact
   ansible.builtin.set_fact:
@@ -135,21 +143,25 @@
          if 'node_stats' in (cpm_probe_write_queue.json.hits.hits[0]._source | default({}))
          else 'elasticsearch.node.stats.thread_pool.write.queue.count' }}
   when: cpm_probe_write_queue.json.hits.hits | length > 0
+  tags: [probe, ml]
 
 - name: Apply default heap field when probe inconclusive
   ansible.builtin.set_fact:
     cpm_field_heap: "{{ cpm_field_heap_default }}"
   when: cpm_field_heap is not defined
+  tags: [probe, ml]
 
 - name: Apply default shards field when probe inconclusive
   ansible.builtin.set_fact:
     cpm_field_shards: "{{ cpm_field_shards_default }}"
   when: cpm_field_shards is not defined
+  tags: [probe, ml]
 
 - name: Apply default cluster ID field when probe inconclusive
   ansible.builtin.set_fact:
     cpm_field_cluster_id: "{{ cpm_field_cluster_id_default }}"
   when: cpm_field_cluster_id is not defined
+  tags: [probe, ml]
 
 - name: Fail when required monitoring fields are missing
   ansible.builtin.fail:
@@ -159,6 +171,7 @@
       Ensure Stack Monitoring data exists in {{ cpm_monitoring_index }}.
   when: >-
     cpm_field_cluster_id is not defined or cpm_field_heap is not defined or cpm_field_shards is not defined
+  tags: [probe, ml]
 
 - name: Build field substitution map
   ansible.builtin.set_fact:
@@ -167,6 +180,7 @@
       elasticsearch.node.stats.jvm.mem.heap.used.pct: "{{ cpm_field_heap }}"
       elasticsearch.cluster.stats.indices.shards.count: "{{ cpm_field_shards }}"
       elasticsearch.node.stats.thread_pool.write.queue.count: "{{ cpm_field_write_queue | default('elasticsearch.node.stats.thread_pool.write.queue.count') }}"
+  tags: [probe, ml]
 
 - name: Show resolved monitoring fields
   ansible.builtin.debug:
@@ -176,3 +190,4 @@
       shards: "{{ cpm_field_shards }}"
       write_queue: "{{ cpm_field_write_queue | default('(default)') }}"
       monitoring_index: "{{ cpm_monitoring_index }}"
+  tags: [probe, ml]
