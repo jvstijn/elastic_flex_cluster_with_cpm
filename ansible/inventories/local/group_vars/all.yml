@@ -21,6 +21,43 @@ cpm_ml_reinstall: false
 cpm_clean_indices: false
 cpm_datafeed_start: ""
 
+# Data streams die buiten CPM-beheer blijven.
+#
+# Het patroon matcht tegen de topicnaam, en die is gelijk aan de naam van de
+# data stream: <type>-<dataset>-<namespace>. Let op dat de kafka_topic_extension
+# hier NIET in zit; die plakt de pipeline-manager er pas later achter.
+#
+# Er mag precies één sterretje in, en alleen de eerste telt. "*-v0*" doet dus
+# niet wat je hoopt: dat wordt endsWith("-v0*") en matcht nooit iets. Staat -v0
+# midden in de naam en varieert de namespace, dan is er per namespace een regel
+# nodig. Het sterretje vooraan maakt zo'n regel wel meteen onafhankelijk van
+# type en dataset: "*-v0-ns1" raakt logs, metrics en traces tegelijk.
+#
+# Komt er een namespace bij, voeg hier dan ook een regel toe. Opzoeken welke er
+# in deze omgeving voorkomen:
+#   GET cpm-pipeline-state/_search
+#   {"size": 0, "aggs": {"ns": {"terms": {"field": "namespace", "size": 50}}}}
+#
+# Uitrollen: --tags exclusions, daarna de state-manager en de pipeline-manager
+# draaien. De tag alleen verandert nog niets aan de Logstash-invoer.
+cpm_stream_exclusions:
+  # Alle streams met -v0 in de naam, één regel per namespace.
+  - pattern: "*-v0-default"
+    reason: "versie-0 streams blijven buiten CPM-beheer"
+  - pattern: "*-v0-ns1"
+    reason: "versie-0 streams blijven buiten CPM-beheer"
+  - pattern: "*-v0-ns2"
+    reason: "versie-0 streams blijven buiten CPM-beheer"
+  - pattern: "*-v0-ns3"
+    reason: "versie-0 streams blijven buiten CPM-beheer"
+  # Bestaande stream met een eigen pipeline buiten CPM.
+  - pattern: "logs-webapp-default"
+    reason: "eigen pipeline buiten CPM"
+
+# true maakt de inventory leidend: alles wat hier niet staat wordt verwijderd,
+# ook exclusions die met scripts/cpm_exclude_stream.py zijn gemaakt.
+cpm_stream_exclusions_prune: false
+
 # registry-sync zet een pas ontdekt cluster op active: false; met active hier
 # bevestigt `--tags registry` elke run dat alle drie meedoen.
 cpm_cluster_registry:
