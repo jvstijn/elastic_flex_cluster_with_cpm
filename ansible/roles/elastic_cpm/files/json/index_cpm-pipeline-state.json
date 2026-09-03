@@ -39,6 +39,9 @@
       },
       "previous_cluster_id": {
         "type": "keyword"
+      },
+      "promoted_reason": {
+        "type": "keyword"
       }
     }
   }
