@@ -98,7 +98,7 @@ services:
       - discovery.type=single-node
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - bootstrap.memory_lock=true
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ES_JAVA_OPTS=-Xms768m -Xmx768m
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=true
       - xpack.security.http.ssl.key=certs/es-acc-remote-a/es-acc-remote-a.key
@@ -117,7 +117,10 @@ services:
       - xpack.security.remote_cluster_server.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.remote_cluster_server.ssl.verification_mode=none
       - xpack.license.self_generated.type=${LICENSE}
-    mem_limit: ${MEM_LIMIT}
+    # Draaide continu tegen de limiet aan en werd tijdens het indexeren door de
+    # kernel afgeschoten (exit 137). 768m heap in 1,5g container geeft Lucene de
+    # off-heap ruimte die het nodig heeft.
+    mem_limit: 1610612736
     ulimits:
       memlock:
         soft: -1
@@ -152,7 +155,7 @@ services:
       - discovery.type=single-node
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - bootstrap.memory_lock=true
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ES_JAVA_OPTS=-Xms768m -Xmx768m
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=true
       - xpack.security.http.ssl.key=certs/es-acc-remote-b/es-acc-remote-b.key
@@ -171,7 +174,10 @@ services:
       - xpack.security.remote_cluster_server.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.remote_cluster_server.ssl.verification_mode=none
       - xpack.license.self_generated.type=${LICENSE}
-    mem_limit: ${MEM_LIMIT}
+    # Draaide continu tegen de limiet aan en werd tijdens het indexeren door de
+    # kernel afgeschoten (exit 137). 768m heap in 1,5g container geeft Lucene de
+    # off-heap ruimte die het nodig heeft.
+    mem_limit: 1610612736
     ulimits:
       memlock:
         soft: -1
@@ -354,6 +360,9 @@ services:
       - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - VAR_API_KEY=${VAR_API_KEY_ACC_CENTRAL}
+    # Viel eerder om met OutOfMemoryError. Oorzaak zat niet in dit getal maar
+    # in de pipeline-templates: een geheugenqueue van 1gb en batches van 3000
+    # passen niet in een heap van 768m. Die staan nu op 256mb en 500.
     mem_limit: 1610612736
     networks:
       - dod-elastic-acc
@@ -377,6 +386,9 @@ services:
       - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - VAR_API_KEY=${VAR_API_KEY_ACC_REMOTE_A}
+    # Viel eerder om met OutOfMemoryError. Oorzaak zat niet in dit getal maar
+    # in de pipeline-templates: een geheugenqueue van 1gb en batches van 3000
+    # passen niet in een heap van 768m. Die staan nu op 256mb en 500.
     mem_limit: 1610612736
     networks:
       - dod-elastic-acc
@@ -400,6 +412,9 @@ services:
       - LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - VAR_API_KEY=${VAR_API_KEY_ACC_REMOTE_B}
+    # Viel eerder om met OutOfMemoryError. Oorzaak zat niet in dit getal maar
+    # in de pipeline-templates: een geheugenqueue van 1gb en batches van 3000
+    # passen niet in een heap van 768m. Die staan nu op 256mb en 500.
     mem_limit: 1610612736
     networks:
       - dod-elastic-acc

@@ -296,7 +296,9 @@
         "port": 9200,
         "method": "delete",
         "path": "/cpm-pipeline-state/_doc/{{ctx.payload.state_id}}",
-        "params": {},
+        "params": {
+          "refresh": "true"
+        },
         "headers": {
 {% endraw %}
           "Authorization": "Apikey {{ watcher_api_key.encoded  }}"
@@ -322,7 +324,9 @@
         "port": 9200,
         "method": "delete",
         "path": "/cpm-routing-suggestions/_doc/{{ctx.payload.suggestion_id}}",
-        "params": {},
+        "params": {
+          "refresh": "true"
+        },
         "headers": {
 {% endraw %}
           "Authorization": "Apikey {{ watcher_api_key.encoded  }}"
@@ -348,7 +352,9 @@
         "port": 9200,
         "method": "put",
         "path": "/cpm-pipeline-state/_doc/{{ctx.payload.data_stream_type}}-{{ctx.payload.dataset}}-{{ctx.payload.namespace}}",
-        "params": {},
+        "params": {
+          "refresh": "true"
+        },
         "headers": {
 {% endraw %}
           "Authorization": "Apikey {{ watcher_api_key.encoded  }}",
