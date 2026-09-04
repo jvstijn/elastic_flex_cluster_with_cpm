@@ -16,6 +16,27 @@
 # De document-id gebruikt dezelfde `_STAR_`-codering als cpm_exclude_stream.py,
 # zodat beide dezelfde documenten beheren.
 
+# De matcher in de state-manager kijkt alleen naar het EERSTE sterretje; de rest
+# van het patroon is dan letterlijke tekst. "*-webapp*" wordt daardoor
+# endsWith("-webapp*") en matcht nooit iets. scripts/cpm_exclude_stream.py
+# weigert zo'n patroon al; zonder deze controle schreef ansible het gewoon weg en
+# leek de uitsluiting te werken terwijl er niets gebeurde.
+- name: Validate stream exclusion patterns
+  ansible.builtin.assert:
+    that:
+      - item.pattern is defined
+      - item.pattern | length > 0
+      - (item.pattern | regex_findall('\*') | length) <= 1
+    fail_msg: >-
+      Ongeldig exclusion-patroon {{ item.pattern | default('(leeg)') }}. Er mag
+      hoogstens één * in, als prefix, suffix of allebei. Gebruik bijvoorbeeld
+      "logs-webapp-*" of "*-webapp-default" in plaats van "*-webapp*".
+    quiet: true
+  loop: "{{ cpm_stream_exclusions }}"
+  loop_control:
+    label: "{{ item.pattern | default('(geen pattern)') }}"
+  tags: [exclusions]
+
 - name: Install CPM stream exclusions timestamp ingest pipeline
   ansible.builtin.uri:
     url: "{{ elastic_base_url }}/_ingest/pipeline/cpm-stream-exclusions-stamp"
