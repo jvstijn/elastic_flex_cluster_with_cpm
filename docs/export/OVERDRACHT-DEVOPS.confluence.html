@@ -1,0 +1,256 @@
+<meta charset="utf-8">
+<title>Overdracht CPM aan DevOps</title>
+<style>body{font-family:-apple-system,Segoe UI,Arial,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;line-height:1.55}table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left;vertical-align:top}th{background:#f4f5f7}pre{background:#f4f5f7;border:1px solid #ddd;padding:10px;overflow-x:auto}code{font-family:Menlo,Consolas,monospace}</style>
+<h1>Overdracht CPM aan DevOps</h1>
+<p>Cluster Pipeline Manager (CPM) verdeelt data streams automatisch over meerdere Elasticsearch-clusters door Logstash-pipelines te genereren en uit te rollen. Dit document is bedoeld als startpunt voor beheer: wat het is, hoe je het uitrolt, hoe je het bedient en wat er misgaat als het misgaat.</p>
+<p>Lees dit één keer door voordat je iets aanraakt. Vooral hoofdstuk 8, want de meeste storingen zijn stil: de keten meldt <code>success</code> terwijl er niets gebeurt.</p>
+<hr>
+<h2>1. Wat CPM doet</h2>
+<p>Er zijn meerdere Elasticsearch-clusters en één Kafka-cluster met per data stream een topic. Iemand moet bepalen welk cluster welke topics consumeert. Dat is CPM.</p>
+<p>De uitkomst is telkens hetzelfde: een set Logstash-pipelines in <code>/_logstash/pipeline</code> op het centrale cluster. De Logstash-instanties halen die zelf op via centralized pipeline management. CPM schrijft geen data en raakt geen Logstash-container aan.</p>
+<p>Per cluster bestaan er twee pipelines:</p>
+<table><thead><tr>
+<th>soort</th>
+<th>inhoud</th>
+</tr></thead><tbody>
+<tr><td><strong>catchall</strong></td><td>alle topics die aan dit cluster zijn toegewezen</td></tr>
+<tr><td><strong>dedicated</strong></td><td>één druk topic dat een eigen pipeline verdient</td></tr>
+</tbody></table>
+<h2>2. Architectuur</h2>
+<pre><code>   Kafka (topics per data stream)
+        │
+        ├──► logstash-central   ──► es-central
+        ├──► logstash-remote-a  ──► es-remote-a
+        └──► logstash-remote-b  ──► es-remote-b
+                                      │
+   elke cluster heeft een Metricbeat  │
+   die naar es-monitoring schrijft ───┘
+                                      │
+   es-central leest es-monitoring terug via de
+   cross-cluster alias  monitoring:</code></pre>
+<p>Drie dingen om te onthouden:</p>
+<ol>
+<li><strong>De watchers draaien allemaal op het centrale cluster.</strong> Nergens anders staat CPM-logica.</li>
+<li><strong>Monitoring is de ontdekkingsbron.</strong> Een stream bestaat voor CPM pas als Metricbeat hem in <code>.monitoring-es-8-*</code> heeft gerapporteerd. Een Kafka-topic zonder data stream in Elasticsearch wordt nooit toegewezen.</li>
+<li><strong>Het centrale cluster benadert monitoring altijd over de clustergrens</strong>, via de alias <code>monitoring:</code>. Ook als monitoring toevallig op hetzelfde cluster zou staan.</li>
+</ol>
+<h2>3. De watcher-keten</h2>
+<p>Zes watchers, in deze volgorde. De standaardschema&#x27;s staan er achter.</p>
+<table><thead><tr>
+<th>#</th>
+<th>watcher</th>
+<th>schema</th>
+<th>doet</th>
+</tr></thead><tbody>
+<tr><td>1</td><td><code>cpm-registry-sync</code></td><td>00:00</td><td>ontdekt clusters uit monitoring, vult <code>cpm-cluster-registry</code></td></tr>
+<tr><td>2</td><td><code>cpm-forecast-trigger</code></td><td>elk uur</td><td>vraagt per ML-job een forecast van 24 uur op</td></tr>
+<tr><td>3</td><td><code>cpm-scoring</code></td><td>00:05</td><td>rekent per cluster een score uit de forecasts</td></tr>
+<tr><td>4</td><td><code>cpm-routing-advisor</code></td><td>00:10</td><td>stelt verplaatsingen voor op basis van ingest-rate</td></tr>
+<tr><td>5</td><td><code>cpm-state-manager</code></td><td>00:15</td><td>bepaalt welk topic naar welke pipeline gaat</td></tr>
+<tr><td>6</td><td><code>cpm-pipeline-manager</code></td><td>00:20</td><td>rendert en pusht de Logstash-pipelines</td></tr>
+</tbody></table>
+<p>De forecast-trigger loopt als enige op een interval en niet op een kloktijd. De volgorde in de tabel is de logische afhankelijkheid, en dat is ook de volgorde die <code>cpm_run_now.py</code> aanhoudt; de kloktijden lopen daar niet mee in de pas.</p>
+<p>Daarnaast <code>cpm-stream-coverage</code> (00:25), die buiten de keten staat en rapporteert welke streams niet gedekt zijn.</p>
+<p>Handmatig een ronde draaien:</p>
+<pre><code>python3 scripts/cpm_run_now.py --host https://central.kaposi.net</code></pre>
+<h3>Hoe de weging werkt</h3>
+<p>De score is niet de huidige belasting maar een <strong>voorspelde piek</strong>. Vier ML-jobs draaien op de monitoring-index met <code>partition_field_name: cluster_id</code>, dus één model per metriek met alle clusters als partities. De forecast-trigger vraagt een vooruitblik van 24 uur, de scoring neemt per cluster het maximum daarvan en normaliseert naar 0-100.</p>
+<table><thead><tr>
+<th>metriek</th>
+<th>ML-job</th>
+<th>genormaliseerd tegen</th>
+<th>gewicht</th>
+</tr></thead><tbody>
+<tr><td>disk</td><td>cpm-store-size</td><td><code>disk_total_bytes</code> uit de registry</td><td>0,50</td></tr>
+<tr><td>jvm</td><td>cpm-jvm-heap</td><td>is al een percentage</td><td>0,25</td></tr>
+<tr><td>shard</td><td>cpm-shard-count</td><td><code>shard_max_threshold</code> (1000)</td><td>0,05</td></tr>
+<tr><td>load</td><td>cpm-cluster-event-rate</td><td><code>write_queue_threshold</code> (200)</td><td>0,20</td></tr>
+</tbody></table>
+<p>Gewichten en drempels staan in <code>cpm-routing-config/_global</code> en zijn per omgeving aanpasbaar, ook via de Kibana-plugin.</p>
+<h3>Hoe een pipelinenaam ontstaat</h3>
+<pre><code>&lt;dc&gt;_cpm-&lt;catchall|dedicated&gt;-&lt;cluster_id&gt;</code></pre>
+<p>Bijvoorbeeld <code>dc-central_cpm-catchall-Xa732PlTR4S3tlxY9n2FSQ</code>.</p>
+<p>Het <code>dc</code>-deel komt <strong>niet</strong> uit het node-attribuut <code>node.attr.dc</code>, ondanks wat comments elders suggereren. Het komt uit <code>cpm_cluster_registry</code> in de inventory. Dat prefix is functioneel: elke Logstash haalt alleen zijn eigen pipelines op.</p>
+<pre><code>xpack.management.pipeline.id: [&quot;dc-central_*&quot;]</code></pre>
+<p>Verander je <code>dc</code> in de inventory, dan verandert de pipelinenaam mee, blijft de oude pipeline achter en pakt de Logstash de nieuwe niet op.</p>
+<h2>4. Waar de configuratie leeft</h2>
+<p>CPM bewaart zijn eigen toestand in indices op het centrale cluster. De belangrijkste:</p>
+<table><thead><tr>
+<th>index</th>
+<th>inhoud</th>
+</tr></thead><tbody>
+<tr><td><code>cpm-cluster-registry</code></td><td>de clusters, hun <code>dc</code>, <code>ingest_hosts</code> en <code>active</code></td></tr>
+<tr><td><code>cpm-routing-config</code></td><td>globale gewichten (<code>_global</code>) en stream locks</td></tr>
+<tr><td><code>cpm-stream-exclusions</code></td><td>streams die buiten CPM blijven</td></tr>
+<tr><td><code>cpm-pipeline-state</code></td><td><strong>de waarheid</strong>: welk topic in welke pipeline hoort</td></tr>
+<tr><td><code>cpm-pipeline-templates</code></td><td>de Logstash-sjablonen en hun instellingen</td></tr>
+<tr><td><code>cpm-scores</code></td><td>de laatste scoringsronde</td></tr>
+<tr><td><code>cpm-routing-suggestions</code></td><td>voorstellen van de advisor</td></tr>
+</tbody></table>
+<p>Wat uit de Ansible-inventory komt en dus bij elke run wordt afgedwongen: <code>dc</code>, <code>ingest_hosts</code>, <code>active</code>, de stream exclusions en <code>kafka_topic_extension</code>.</p>
+<h2>5. Uitrollen</h2>
+<pre><code>cd ansible
+.venv/bin/ansible-playbook -i inventories/kaposi/hosts site.yml</code></pre>
+<p>De inventory bepaalt de omgeving. <code>ansible.cfg</code> heeft <code>kaposi</code> als standaard.</p>
+<table><thead><tr>
+<th>inventory</th>
+<th>omgeving</th>
+</tr></thead><tbody>
+<tr><td><code>inventories/kaposi</code></td><td>productie</td></tr>
+<tr><td><code>inventories/local</code></td><td>referentie-stack in Docker</td></tr>
+<tr><td><code>inventories/acc</code></td><td>acceptatie in Docker</td></tr>
+</tbody></table>
+<p>Credentials komen uit een env-bestand, standaard <code>ansible/.env</code>, te overrulen met <code>CPM_ENV_FILE</code>. Dat bestand staat niet in git en moet je zelf plaatsen.</p>
+<h3>Tags</h3>
+<p>Zonder tag draait alles behalve <code>verify</code>, dat de tag <code>never</code> draagt.</p>
+<table><thead><tr>
+<th>tag</th>
+<th>wat</th>
+</tr></thead><tbody>
+<tr><td><code>probe</code></td><td>veldnamen in de monitoring-index opzoeken</td></tr>
+<tr><td><code>indices</code></td><td>CPM-indices en mappings</td></tr>
+<tr><td><code>ml</code></td><td>ML-jobs en datafeeds (inclusief probe)</td></tr>
+<tr><td><code>transform</code></td><td>ingest pipeline en watcher-status transform</td></tr>
+<tr><td><code>watchers</code></td><td>de zes watchers plus de webhook-API-key</td></tr>
+<tr><td><code>seed</code></td><td>pipeline-templates en routing-defaults</td></tr>
+<tr><td><code>exclusions</code></td><td>stream exclusions uit de inventory</td></tr>
+<tr><td><code>registry</code></td><td><code>dc</code>, <code>ingest_hosts</code> en <code>active</code> naar de registry</td></tr>
+<tr><td><code>dashboard</code></td><td>Kibana-dashboards en visualisaties</td></tr>
+<tr><td><code>verify</code></td><td>controles, draait alleen op verzoek</td></tr>
+</tbody></table>
+<p>Een gewone run is herhaalbaar: ML-jobs worden niet opnieuw aangemaakt tenzij je <code>-e cpm_ml_reinstall=true</code> meegeeft, indices worden niet verwijderd zolang <code>cpm_clean_indices</code> false is, en de scoringsgewichten worden alleen geschreven als <code>_global</code> nog niet bestaat.</p>
+<p>Twee dingen worden wél elke keer overschreven: de registry-velden uit de inventory, en de dashboards. Zet iemand via de plugin een cluster op inactief terwijl de inventory <code>active: true</code> zegt, dan staat het na een run weer aan.</p>
+<h3>Volgorde bij een lege omgeving</h3>
+<p><code>registry_patch</code> werkt bestaande registry-documenten bij en maakt er geen aan. Op een lege omgeving moet <code>cpm-registry-sync</code> dus eerst gedraaid hebben. Reken op twee runs, of draai de keten tussendoor.</p>
+<h2>6. Dagelijks beheer</h2>
+<h3>Streams buiten CPM houden</h3>
+<p>In <code>group_vars/&lt;omgeving&gt;/all.yml</code>:</p>
+<pre><code>cpm_stream_exclusions:
+  - pattern: &quot;*-v0-default&quot;
+    reason: &quot;versie-0 streams blijven buiten CPM-beheer&quot;
+  - pattern: &quot;logs-winlog.winlog-default&quot;
+    reason: &quot;ticket OPS-1234&quot;
+
+cpm_stream_exclusions_prune: false</code></pre>
+<p>Het patroon matcht tegen de topicnaam, die gelijk is aan de naam van de data stream: <code>&lt;type&gt;-&lt;dataset&gt;-&lt;namespace&gt;</code>. <strong>Zonder</strong> <code>kafka_topic_extension</code>, want die plakt de pipeline-manager er pas later achter.</p>
+<p>Er mag <strong>één</strong> sterretje in, en alleen de eerste telt:</p>
+<table><thead><tr>
+<th>patroon</th>
+<th>betekent</th>
+</tr></thead><tbody>
+<tr><td><code>logs-webapp-*</code></td><td>begint met <code>logs-webapp-</code></td></tr>
+<tr><td><code>*-webapp-default</code></td><td>eindigt op <code>-webapp-default</code></td></tr>
+<tr><td><code>logs-*-default</code></td><td>begint met <code>logs-</code> én eindigt op <code>-default</code></td></tr>
+<tr><td><code>*-webapp*</code></td><td><strong>matcht niets</strong>, wordt <code>endsWith(&quot;-webapp*&quot;)</code></td></tr>
+</tbody></table>
+<p>Ansible weigert een patroon met twee sterretjes sinds commit <code>1d1dfb5</code>.</p>
+<p>Uitrollen, en let op: standaard is dit <strong>aanvullend</strong>. Een regel uit de inventory halen verwijdert het document niet. Daar is prune voor.</p>
+<pre><code>.venv/bin/ansible-playbook -i inventories/kaposi/hosts site.yml --tags exclusions
+python3 scripts/cpm_run_now.py --host https://central.kaposi.net</code></pre>
+<p>Vooraf controleren wat een patroon raakt:</p>
+<pre><code>scripts/cpm_exclude_stream.py check logs-nginx-prod</code></pre>
+<h3>Een stream vastzetten op een cluster</h3>
+<p>Een stream lock in <code>cpm-routing-config</code> met <code>config_type: stream_lock</code> en <code>locked: true</code> gaat vóór alles. Beheer via de Kibana-plugin onder Stack Management → Ingest → Cluster Pipeline Manager.</p>
+<h3>De plugin</h3>
+<p>De plugin zit in het Kibana-image gebakken via <code>kibana_plugin/Dockerfile.install</code>, dat de gebouwde zip uitpakt in het officiële image. Bouwt compose hem niet opnieuw, forceer dan:</p>
+<pre><code>docker compose -f docker-local/docker-compose.yml up -d --build kibana
+docker exec dod-elastic-kibana-1 ls plugins    # -&gt; cpm</code></pre>
+<p>De zip moet exact bij <code>STACK_VERSION</code> passen.</p>
+<h2>7. Monitoring-topologie</h2>
+<p>Monitoring draait op een eigen cluster. Elke Metricbeat scrapet zijn eigen cluster en schrijft naar dat monitoring-cluster; het centrale cluster leest terug via de alias <code>monitoring:</code>.</p>
+<p>Twee plekken moeten op dezelfde index wijzen:</p>
+<table><thead><tr>
+<th>onderdeel</th>
+<th>index</th>
+<th>herkomst</th>
+</tr></thead><tbody>
+<tr><td>watchers</td><td><code>monitoring:.monitoring-es-8-*</code></td><td>hard in de watcher-templates</td></tr>
+<tr><td>ML-datafeeds en veldprobe</td><td><code>{{ cpm_monitoring_index }}</code></td><td>inventory of role-defaults</td></tr>
+</tbody></table>
+<p>Staat <code>cpm_monitoring_index</code> zonder het <code>monitoring:</code> prefix terwijl monitoring op een apart cluster draait, dan zoeken de datafeeds lokaal, vinden niets, en blijven alle scores op 0. De watchers draaien gewoon door, dus je ziet geen fout.</p>
+<p>Bij het invoeren van een apart monitoring-cluster in een bestaande omgeving:</p>
+<ol>
+<li><code>cpm_monitoring_index</code> omzetten in de inventory.</li>
+<li>Historie meeverhuizen met <code>scripts/copy_monitoring_history.py</code>. Zonder historie heeft de ML geen model en dus geen forecast.</li>
+<li>De rol draaien met <code>-e cpm_ml_reinstall=true</code>. Een lopende datafeed leest niet met terugwerkende kracht.</li>
+</ol>
+<h2>8. Troubleshooting</h2>
+<p>Bijna elke storing hier is stil. De keten meldt <code>success</code> omdat de fout in een transform zit en niet in een actie, of omdat een zoekopdracht leeg terugkomt in plaats van te falen.</p>
+<h3>Eerste controle bij &quot;er verandert niets&quot;</h3>
+<p>Kijk naar de status van de <strong>transform</strong>, niet naar die van de acties:</p>
+<pre><code>curl -sk -u elastic:$PW -X POST \
+  https://central.kaposi.net/_watcher/watch/cpm-state-manager/_execute \
+  -H &#x27;Content-Type: application/json&#x27; \
+  -d &#x27;{&quot;record_execution&quot;:false,&quot;action_modes&quot;:{&quot;_all&quot;:&quot;simulate&quot;}}&#x27;</code></pre>
+<p>Let op: <code>record_execution: false</code> onderdrukt alleen de historie. Zonder <code>action_modes</code> draaien de acties gewoon en verwijdert zo&#x27;n test echt documenten.</p>
+<h3>Symptomenlijst</h3>
+<table><thead><tr>
+<th>symptoom</th>
+<th>oorzaak</th>
+<th>controle</th>
+</tr></thead><tbody>
+<tr><td>keten meldt success, niets verandert</td><td>monitoring onbereikbaar, aggregatie leeg</td><td><code>_remote/info</code>, <code>transform.status</code></td></tr>
+<tr><td>alle cluster-scores zijn 0</td><td>ML-datafeeds lezen de verkeerde index, of geen historie</td><td><code>_ml/datafeeds/datafeed-cpm-*</code></td></tr>
+<tr><td>pipelines lopen één cyclus achter</td><td>opgelost sinds <code>a9aff9e</code> (<code>refresh</code> op de state-manager)</td><td>vergelijk state met <code>_logstash/pipeline</code></td></tr>
+<tr><td>een cluster heeft geen dedicated pipeline</td><td>opgelost sinds <code>f8f3625</code></td><td><code>scripts/cpm_diagnose_dedicated.py</code></td></tr>
+<tr><td>uitsluiting doet niets</td><td>twee sterretjes, of prune vergeten, of keten niet gedraaid</td><td><code>cpm_exclude_stream.py check &lt;topic&gt;</code></td></tr>
+<tr><td>geen enkel cluster wordt beheerd</td><td><code>cpm_cluster_registry</code> leeg</td><td>registry: <code>dc: unknown</code>, <code>active: false</code></td></tr>
+<tr><td>Logstash valt om met OutOfMemoryError</td><td>queue en batch size in de pipeline-templates</td><td>zie hieronder</td></tr>
+<tr><td>topic wordt niet geconsumeerd</td><td>Kafka consumer group gedeeld met een andere omgeving</td><td><code>kafka-consumer-groups.sh --describe</code></td></tr>
+</tbody></table>
+<h3>Als <code>cpm_cluster_registry</code> niet is ingevuld</h3>
+<p>Dan gebeurt er niets, zonder foutmelding. Registry-sync ontdekt de clusters wel, maar zet <code>dc: unknown</code>, <code>active: false</code> en laat <code>ingest_hosts</code> weg. De state-manager slaat elk inactief cluster over en ruimt bestaande state daarvoor op. Zelfs als je <code>active</code> handmatig aanzet, slaat de pipeline-manager elk cluster zonder <code>ingest_hosts</code> stil over.</p>
+<h3>Logstash-geheugen</h3>
+<p>De CPM-Logstash instanties draaien op 768 MB heap. De pipeline-templates staan op <code>queue.max_bytes: 1gb</code> met batches van 3000 en 16 consumer-threads voor de catchall en 32 workers voor de dedicated. Die combinatie is eerder omgevallen met een <code>OutOfMemoryError</code>.</p>
+<p>Beproefde lagere waarden, nu <strong>niet</strong> actief:</p>
+<table><thead><tr>
+<th>instelling</th>
+<th>huidig</th>
+<th>beproefd</th>
+</tr></thead><tbody>
+<tr><td>consumer_threads catchall</td><td>16</td><td>4</td></tr>
+<tr><td>consumer_threads dedicated</td><td>4</td><td>2</td></tr>
+<tr><td>pipeline.workers dedicated</td><td>32</td><td>4</td></tr>
+<tr><td>pipeline.batch.size</td><td>3000</td><td>500</td></tr>
+<tr><td>queue.max_bytes</td><td>1gb</td><td>256mb</td></tr>
+</tbody></table>
+<p>Consumer-threads boven het aantal partities zijn weggegooid werk: Kafka wijst hoogstens één consumer per partitie toe. Kies bewust: of deze lagere waarden, of de heap omhoog. <code>cpm-pipeline-template-*.json</code> is gedeeld met productie.</p>
+<h3>Cross-cluster credentials in Docker</h3>
+<p>Alleen in de Docker-omgevingen. De keystore van het centrale cluster zit in de containerlaag. Wordt de container opnieuw aangemaakt, en dat gebeurt al als <code>.env</code> wijzigt, dan zijn de cross-cluster credentials weg en valt elke CCS-search stil. Herstellen:</p>
+<pre><code>docker compose -f docker-local/docker-compose.yml up -d --force-recreate init</code></pre>
+<h2>9. Scripts</h2>
+<table><thead><tr>
+<th>script</th>
+<th>waarvoor</th>
+</tr></thead><tbody>
+<tr><td><code>cpm_run_now.py</code></td><td>de watcher-keten in de juiste volgorde draaien</td></tr>
+<tr><td><code>cpm_diagnose_dedicated.py</code></td><td>uitleggen waarom een cluster geen dedicated pipeline krijgt</td></tr>
+<tr><td><code>cpm_exclude_stream.py</code></td><td>uitsluitingen toevoegen, verwijderen, controleren</td></tr>
+<tr><td><code>copy_monitoring_history.py</code></td><td>monitoring-historie naar een nieuw cluster kopiëren</td></tr>
+<tr><td><code>create_kafka_topics.py</code></td><td>topics aanmaken, met optionele suffix per omgeving</td></tr>
+<tr><td><code>gen_stream_data.py</code></td><td>testdata rechtstreeks in de doeltopics produceren</td></tr>
+<tr><td><code>simulate_continuous_load.py</code></td><td>doorlopende instroom, nodig voor een meetbare rate</td></tr>
+<tr><td><code>build_kibana_cpm_plugin.sh</code></td><td>de Kibana-plugin bouwen</td></tr>
+</tbody></table>
+<p>Alle Python-scripts gebruiken alleen de standaardbibliotheek en hebben <code>--help</code>.</p>
+<h2>10. Bekende beperkingen</h2>
+<ul>
+<li><strong>Eén sterretje per exclusion-patroon.</strong> Technisch is meer prima haalbaar, maar de matcher staat negen keer in de watcher-templates plus een keer in Python.</li>
+<li><strong>De veldsubstitutie is half aangesloten.</strong> <code>monitoring_fields.yml</code> bouwt een feit <code>cpm_field_substitutions</code> op dat nergens wordt gebruikt; alleen de ML-datafeeds krijgen de gevonden veldnamen. De watchers hebben de veldnamen hard staan. Dat wordt relevant bij een overstap van Metricbeat naar Elastic Agent.</li>
+<li><strong>Overstap naar Elastic Agent raakt vier watchers.</strong> De agent schrijft naar <code>metrics-elasticsearch.stack_monitoring.*</code> in plaats van <code>.monitoring-es-8-*</code>, en <code>event.dataset</code> krijgt andere waarden. De veldnamen blijven vermoedelijk gelijk, maar dat is niet geverifieerd.</li>
+<li><strong>Een dedicated pipeline is sticky.</strong> Eenmaal toegewezen blijft een stream dedicated, ook als een andere stream later drukker wordt.</li>
+<li><strong>Promotie pas vanaf twee topics per cluster.</strong> Bij één topic zou de catchall leeg achterblijven.</li>
+</ul>
+<h2>11. Verder lezen</h2>
+<table><thead><tr>
+<th>document</th>
+<th>inhoud</th>
+</tr></thead><tbody>
+<tr><td><code>docs/CPM_Pipeline_Generation.md</code></td><td>hoe de pipelines worden opgebouwd, veldniveau</td></tr>
+<tr><td><code>docs/runbook-stream-routing.md</code></td><td>uitsluitingen en locks, drie beheerwegen</td></tr>
+<tr><td><code>docs/kafka-logstash-setup.md</code></td><td>de Kafka- en Logstash-topologie</td></tr>
+<tr><td><code>docs/dagboek/</code></td><td>dagelijkse aantekeningen; hier staat de stand van zaken</td></tr>
+<tr><td><code>docker-acc/README.md</code></td><td>de acceptatie-omgeving en de topic-extensie</td></tr>
+<tr><td><code>kibana_plugin/README.md</code></td><td>de plugin bouwen en installeren</td></tr>
+</tbody></table>
+<p>Het dagboek is geen logboek achteraf maar de plek waar besluiten en oorzaken staan. Bij een onbegrepen storing is <code>grep</code> daarop vaak sneller dan de code in.</p>
