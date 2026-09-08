@@ -1,0 +1,16 @@
+api.http.host: "0.0.0.0"
+
+xpack.monitoring.enabled: true
+xpack.monitoring.elasticsearch.hosts: ["https://es-central:9200"]
+xpack.monitoring.elasticsearch.username: "elastic"
+xpack.monitoring.elasticsearch.password: "${ELASTIC_PASSWORD}"
+xpack.monitoring.elasticsearch.ssl.verification_mode: none
+
+xpack.management.enabled: true
+xpack.management.elasticsearch.hosts: ["https://es-central:9200"]
+xpack.management.elasticsearch.username: "cpm_logstash"
+xpack.management.elasticsearch.password: "${LOGSTASH_PASSWORD}"
+xpack.management.elasticsearch.ssl.verification_mode: none
+xpack.management.pipeline.id: ["dc-central_*"]
+
+path.logs: /usr/share/logstash/logs

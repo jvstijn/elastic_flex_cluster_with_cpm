@@ -1,0 +1,8 @@
+---
+# Acceptatie: alle Kafka-topics eindigen op "-acc".
+# Wordt door seed_data.yml in de cpm-pipeline-templates documenten gezet en
+# door de pipeline-manager watcher achter elke topicnaam geplakt.
+kafka_topic_extension: "-acc"
+
+# Eigen consumer-group: acc deelt de Kafka met prd.
+cpm_kafka_group_id: "cpm-ingest-acc"

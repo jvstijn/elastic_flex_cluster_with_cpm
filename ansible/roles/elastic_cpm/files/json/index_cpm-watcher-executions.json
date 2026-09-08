@@ -4,7 +4,7 @@
     "number_of_replicas": 1
   },
   "mappings": {
-    "dynamic": "strict",
+    "dynamic": false,
     "properties": {
       "watch_id": {
         "type": "keyword"

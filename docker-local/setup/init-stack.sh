@@ -4,6 +4,7 @@ set -euo pipefail
 CA="${CA_CERT:-/certs/ca/ca.crt}"
 MARKER="/setup/state/.stack-ready"
 STATE_DIR="/setup/state"
+ENV_FILE="/workspace/.env"
 
 mkdir -p "${STATE_DIR}"
 
@@ -51,17 +52,106 @@ set_builtin_password() {
 create_monitoring_users() {
   echo "Configuring monitoring users..."
 
-  for host in es-central es-remote-a es-remote-b; do
+  for host in es-central es-remote-a es-remote-b es-monitoring; do
     set_builtin_password "${host}" remote_monitoring_user "${MONITORING_PASSWORD}"
   done
 
-  es_curl es-central "/_security/user/remote_monitoring_agent" -X PUT \
+  # De agent-user is de OUTPUT-user van Metricbeat en moet dus op het
+  # monitoring-cluster staan, niet op es-central.
+  es_curl es-monitoring "/_security/user/remote_monitoring_agent" -X PUT \
     -H "Content-Type: application/json" \
     -d "{
       \"password\": \"${MONITORING_PASSWORD}\",
       \"roles\": [\"remote_monitoring_agent\"],
       \"full_name\": \"Remote Monitoring Agent\"
     }" >/dev/null || true
+}
+
+# Centralized pipeline management: Logstash mag alleen pipelines lezen, en heeft
+# cluster:monitor nodig voor de license-check op /. Zonder deze user stopt elke
+# CPM-Logstash met "unable to authenticate user [cpm_logstash]" -> FATAL.
+create_cpm_logstash_user() {
+  echo "Creating cpm_logstash role and user on es-central..."
+  es_curl es-central "/_security/role/cpm_logstash_pipelines" -X PUT \
+    -H "Content-Type: application/json" \
+    -d '{
+      "cluster": ["monitor", "manage_logstash_pipelines"]
+    }' >/dev/null
+
+  es_curl es-central "/_security/user/cpm_logstash" -X PUT \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"password\": \"${LOGSTASH_PASSWORD}\",
+      \"roles\": [\"cpm_logstash_pipelines\"],
+      \"full_name\": \"CPM centralized pipeline management\"
+    }" >/dev/null
+}
+
+# Ingest-key per cluster: hiermee schrijft de door CPM gerenderde pipeline zijn
+# data streams weg. De pipeline-templates gebruiken hem als ${VAR_API_KEY}.
+create_ingest_api_key() {
+  local host="$1"
+  local name="$2"
+  es_curl "${host}" "/_security/api_key" -X POST \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"name\": \"${name}\",
+      \"role_descriptors\": {
+        \"cpm_ingest\": {
+          \"cluster\": [\"monitor\", \"manage_index_templates\"],
+          \"indices\": [
+            {
+              \"names\": [\"logs-*\", \"metrics-*\", \"traces-*\", \"filebeat-*\"],
+              \"privileges\": [\"auto_configure\", \"create_doc\", \"create\", \"write\", \"view_index_metadata\"]
+            }
+          ]
+        }
+      }
+    }"
+}
+
+encoded_of() {
+  echo "$1" | grep -o '"encoded":"[^"]*"' | head -1 | cut -d'"' -f4
+}
+
+# Zet KEY=waarde in .env: bestaande regel vervangen, anders toevoegen.
+put_env_var() {
+  local key="$1"
+  local value="$2"
+  if [ ! -w "${ENV_FILE}" ]; then
+    echo "WARN: ${ENV_FILE} is niet schrijfbaar; zet ${key} handmatig."
+    return 0
+  fi
+  if grep -q "^${key}=" "${ENV_FILE}"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "${ENV_FILE}"
+  else
+    printf '%s=%s\n' "${key}" "${value}" >> "${ENV_FILE}"
+  fi
+  echo "  ${key} bijgewerkt in .env"
+}
+
+create_ingest_keys() {
+  echo "Creating per-cluster ingest API keys..."
+  local central_key remote_a_key remote_b_key
+  central_key="$(encoded_of "$(create_ingest_api_key es-central cpm-ingest-central)")"
+  remote_a_key="$(encoded_of "$(create_ingest_api_key es-remote-a cpm-ingest-remote-a)")"
+  remote_b_key="$(encoded_of "$(create_ingest_api_key es-remote-b cpm-ingest-remote-b)")"
+
+  for pair in "VAR_API_KEY_CENTRAL:${central_key}" \
+              "VAR_API_KEY_REMOTE_A:${remote_a_key}" \
+              "VAR_API_KEY_REMOTE_B:${remote_b_key}"; do
+    local k="${pair%%:*}" v="${pair#*:}"
+    if [ -z "${v}" ]; then
+      echo "WARN: geen key gekregen voor ${k}"
+      continue
+    fi
+    printf '%s=%s\n' "${k}" "${v}" >> "${STATE_DIR}/api-keys.env"
+    put_env_var "${k}" "${v}"
+  done
+
+  echo "Herstart de logstash-services zodat ze de nieuwe VAR_API_KEY_* oppikken:"
+  echo "  docker compose -f docker-local/docker-compose.yml up -d --force-recreate \\"
+  echo "      logstash-central logstash-remote-a logstash-remote-b"
 }
 
 create_ccs_api_key() {
@@ -105,8 +195,7 @@ configure_remote_clusters() {
       "persistent": {
         "cluster.remote.remote_a.seeds": ["es-remote-a:9443"],
         "cluster.remote.remote_b.seeds": ["es-remote-b:9443"],
-        "cluster.remote.monitoring.mode": "sniff",
-        "cluster.remote.monitoring.seeds": ["es-central:9300"],
+        "cluster.remote.monitoring.seeds": ["es-monitoring:9443"],
         "cluster.remote.monitoring.skip_unavailable": true
       }
     }'
@@ -126,7 +215,7 @@ create_ccs_role() {
       ],
       "remote_indices": [
         {
-          "clusters": ["remote_a", "remote_b"],
+          "clusters": ["remote_a", "remote_b", "monitoring"],
           "names": ["*"],
           "privileges": ["read", "view_index_metadata", "monitor"]
         }
@@ -165,35 +254,79 @@ verify_remote_clusters() {
   es_curl es-central "/_remote/info?pretty"
 }
 
+# De keystore van es-central staat in de containerlaag, niet op een volume.
+# Zodra de container opnieuw wordt aangemaakt (en dat gebeurt al als .env
+# wijzigt) zijn de cross-cluster credentials weg, valt elke CCS-search stil en
+# ziet CPM geen monitoring-data meer. Deze stap draait daarom bij ELKE start.
+# De sleutels zelf worden hergebruikt uit ${STATE_DIR}/ccs-keys.env, zodat er
+# niet bij iedere herstart een nieuwe API-key bijkomt.
+ensure_ccs_credentials() {
+  local keyfile="${STATE_DIR}/ccs-keys.env"
+  # shellcheck disable=SC1090
+  [ -f "${keyfile}" ] && . "${keyfile}"
+
+  local changed=0
+  if [ -z "${CCS_KEY_MONITORING:-}" ]; then
+    echo "Creating cross-cluster API key on es-monitoring..."
+    CCS_KEY_MONITORING="$(encoded_of "$(create_ccs_api_key es-monitoring ccs-from-central-monitoring)")"
+    changed=1
+  fi
+  if [ -z "${CCS_KEY_REMOTE_A:-}" ]; then
+    echo "Creating cross-cluster API key on es-remote-a..."
+    CCS_KEY_REMOTE_A="$(encoded_of "$(create_ccs_api_key es-remote-a ccs-from-central-remote_a)")"
+    changed=1
+  fi
+  if [ -z "${CCS_KEY_REMOTE_B:-}" ]; then
+    echo "Creating cross-cluster API key on es-remote-b..."
+    CCS_KEY_REMOTE_B="$(encoded_of "$(create_ccs_api_key es-remote-b ccs-from-central-remote_b)")"
+    changed=1
+  fi
+
+  if [ "${changed}" -eq 1 ]; then
+    : > "${keyfile}"
+    printf 'CCS_KEY_MONITORING=%s\n' "${CCS_KEY_MONITORING}" >> "${keyfile}"
+    printf 'CCS_KEY_REMOTE_A=%s\n' "${CCS_KEY_REMOTE_A}" >> "${keyfile}"
+    printf 'CCS_KEY_REMOTE_B=%s\n' "${CCS_KEY_REMOTE_B}" >> "${keyfile}"
+
+    echo "Cross-cluster sleutels opgeslagen in ${keyfile}"
+  fi
+
+  add_keystore_credential monitoring "${CCS_KEY_MONITORING}"
+  add_keystore_credential remote_a "${CCS_KEY_REMOTE_A}"
+  add_keystore_credential remote_b "${CCS_KEY_REMOTE_B}"
+
+  reload_secure_settings
+  configure_remote_clusters
+}
+
+for host in es-central es-remote-a es-remote-b es-monitoring; do
+  wait_for_es "${host}"
+done
+
+# Trial eerst: cross-cluster API-keys vragen een licentie die verder gaat
+# dan basic.
+for host in es-central es-remote-a es-remote-b es-monitoring; do
+  start_trial "${host}"
+done
+
+ensure_ccs_credentials
+
 if [ -f "${MARKER}" ]; then
   echo "Stack already initialized (${MARKER} exists). Skipping."
   exit 0
 fi
 
-wait_for_es es-central
-wait_for_es es-remote-a
-wait_for_es es-remote-b
 
 set_builtin_password es-central kibana_system "${KIBANA_PASSWORD}"
+# Stack Monitoring in Kibana bevraagt het monitoring-cluster rechtstreeks.
+set_builtin_password es-monitoring kibana_system "${KIBANA_PASSWORD}"
 set_builtin_password es-central logstash_system "${LOGSTASH_PASSWORD}"
 
-for host in es-central es-remote-a es-remote-b; do
-  start_trial "${host}"
-done
 
 create_monitoring_users
+create_cpm_logstash_user
+create_ingest_keys
 
-remote_a_key="$(create_ccs_api_key es-remote-a ccs-from-central-remote-a)"
-remote_b_key="$(create_ccs_api_key es-remote-b ccs-from-central-remote-b)"
-
-remote_a_encoded="$(echo "${remote_a_key}" | grep -o '"encoded":"[^"]*"' | head -1 | cut -d'"' -f4)"
-remote_b_encoded="$(echo "${remote_b_key}" | grep -o '"encoded":"[^"]*"' | head -1 | cut -d'"' -f4)"
-
-add_keystore_credential remote_a "${remote_a_encoded}"
-add_keystore_credential remote_b "${remote_b_encoded}"
-
-reload_secure_settings
-configure_remote_clusters
 create_ccs_role
 seed_logstash_pipeline
 verify_remote_clusters

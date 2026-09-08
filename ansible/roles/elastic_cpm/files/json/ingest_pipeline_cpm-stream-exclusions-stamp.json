@@ -1,0 +1,28 @@
+{
+  "description": "Vult updated_at/updated_by op cpm-stream-exclusions wanneer de schrijver ze weglaat. Als default_pipeline op de index gezet, zodat een kale PUT vanuit Dev Tools geen handmatige timestamp nodig heeft. override=false, dus een expliciet meegegeven waarde blijft staan.",
+  "processors": [
+    {
+      "set": {
+        "field": "updated_at",
+        "value": "{{{_ingest.timestamp}}}",
+        "override": false
+      }
+    },
+    {
+      "date": {
+        "field": "updated_at",
+        "target_field": "updated_at",
+        "formats": ["ISO8601"],
+        "output_format": "strict_date_time_no_millis",
+        "timezone": "UTC"
+      }
+    },
+    {
+      "set": {
+        "field": "updated_by",
+        "value": "unknown",
+        "override": false
+      }
+    }
+  ]
+}

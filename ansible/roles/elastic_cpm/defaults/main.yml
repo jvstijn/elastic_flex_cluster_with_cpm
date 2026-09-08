@@ -1,6 +1,11 @@
 ---
-# Must match the literal in templates/cpm_monitoring_search_url.j2 ({% raw %} blocks)
-cpm_monitoring_index: ".monitoring-es-8-*"
+# Index waar monitoring-data staat, inclusief het cross-cluster prefix.
+# De watchers hebben "monitoring:" hard in hun templates staan; deze variabele
+# stuurt de ML-datafeeds en de veldprobe, zodat die dezelfde alias gebruiken.
+# Wees hier niet slordig mee: staat er geen prefix terwijl monitoring op een
+# apart cluster draait, dan zoeken de datafeeds lokaal, vinden ze niets en
+# blijven alle scores op 0 staan.
+cpm_monitoring_index: "monitoring:.monitoring-es-8-*"
 
 cpm_field_cluster_id_default: elasticsearch.cluster.id
 cpm_field_heap_default: elasticsearch.node.stats.jvm.mem.heap.used.pct
@@ -19,6 +24,18 @@ cpm_field_shards_candidates:
 cpm_ml_reinstall: false
 cpm_clean_indices: false
 
+# Suffix achter elke Kafka-topicnaam. Leeg voor productie, "-acc" voor
+# acceptatie (zie group_vars/acc.yml). seed_data.yml schrijft de waarde in de
+# cpm-pipeline-templates documenten; de pipeline-manager watcher leest hem
+# daaruit en plakt hem achter __TOPIC__ en elk topic in __TOPICS_LIST__.
+kafka_topic_extension: ""
+
+# Kafka consumer-group van de CPM-pipelines. MOET per omgeving verschillen als
+# meerdere omgevingen dezelfde Kafka delen: binnen één group verdeelt Kafka de
+# partities over álle leden, dus dan krijgt een prd-consumer een acc-partitie
+# toegewezen, commit de offset en gooit de events weg.
+cpm_kafka_group_id: "cpm-ingest"
+
 # Max managed data streams (discovery / pipeline-state / monitoring aggs)
 cpm_max_clusters: 32
 cpm_max_datastreams_total: 16384
@@ -34,6 +51,19 @@ cpm_index_dynamic_settings:
 
 # ISO8601; empty = playbook computes now-2d at runtime
 cpm_datafeed_start: ""
+
+# Data streams die buiten CPM-beheer blijven. `pattern` is de topicnaam == de
+# data stream-naam (<type>-<dataset>-<namespace>); één `*` mag, als prefix,
+# suffix of allebei. Voorbeeld:
+#
+#   cpm_stream_exclusions:
+#     - { pattern: "logs-winlog.winlog-default", reason: "ticket Y" }
+#     - { pattern: "*-tst", reason: "alle test-streams" }
+#
+# Standaard additief: exclusions die buiten ansible zijn gemaakt blijven staan.
+# Zet cpm_stream_exclusions_prune op true om ansible leidend te maken.
+cpm_stream_exclusions: []
+cpm_stream_exclusions_prune: false
 
 cpm_indices:
   - { name: cpm-cluster-registry, file: json/index_cpm-cluster-registry.json }

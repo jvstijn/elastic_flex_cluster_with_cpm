@@ -39,8 +39,10 @@
     force_basic_auth: true
     validate_certs: "{{ cpm_validate_certs }}"
     body_format: json
-    body:
-      properties: "{{ (lookup('file', role_path + '/files/' + item.file) | from_json).mappings.properties }}"
+    # Het hele mappings-blok, dus inclusief 'dynamic'. Alleen properties sturen
+    # laat een bestaande index op zijn oude dynamic-instelling staan, en dat is
+    # precies wat cpm-watcher-executions op 'strict' hield.
+    body: "{{ (lookup('file', role_path + '/files/' + item.file) | from_json).mappings }}"
     status_code: [200, 201, 400]
   loop: "{{ cpm_indices }}"
   loop_control:

@@ -1,4 +1,9 @@
 # Reference environment (imr-dod-vm) via public nginx hostnames.
 # Ansible runs locally and calls HTTPS APIs on :443.
+#
+# De groep [prd] laat group_vars/prd.yml gelden (kafka_topic_extension: "").
 [cpm]
 localhost ansible_connection=local
+
+[prd:children]
+cpm

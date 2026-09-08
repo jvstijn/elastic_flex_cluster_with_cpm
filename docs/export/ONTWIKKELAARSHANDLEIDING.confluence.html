@@ -1,0 +1,438 @@
+<meta charset="utf-8">
+<title>CPM voor ontwikkelaars</title>
+<style>body{font-family:-apple-system,Segoe UI,Arial,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;line-height:1.55}table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left;vertical-align:top}th{background:#f4f5f7}pre{background:#f4f5f7;border:1px solid #ddd;padding:10px;overflow-x:auto}code{font-family:Menlo,Consolas,monospace}</style>
+<h1>CPM voor ontwikkelaars</h1>
+<p>Alles wat je nodig hebt om aan Cluster Pipeline Manager te werken. Dit document staat op zichzelf: je hoeft er geen ander document bij te pakken.</p>
+<p>Twee talen komen voorbij die je waarschijnlijk niet kent. <strong>Painless</strong> is de scripttaal van Elasticsearch en draagt vrijwel alle logica van CPM. <strong>Mustache</strong> is de sjabloontaal waarmee een watcher zijn HTTP-aanroepen opbouwt. Hoofdstuk 3 en 4 leren je precies zoveel van allebei als je hier nodig hebt.</p>
+<hr>
+<h2>1. Het idee in één bladzijde</h2>
+<p>Er zijn meerdere Elasticsearch-clusters en één Kafka-cluster met per data stream een topic. Iemand moet bepalen welk cluster welke topics consumeert. CPM doet dat automatisch en legt het resultaat vast als Logstash-pipelines.</p>
+<p>CPM is geen service en geen container. Het is een verzameling <strong>watchers</strong>: geplande taken die binnen Elasticsearch zelf draaien. Elke watcher zoekt wat op, rekent er iets mee, en schrijft het resultaat terug via de REST-API.</p>
+<p>De uitkomst is een set pipelines onder <code>/_logstash/pipeline</code> op het centrale cluster. De Logstash-instanties halen die zelf op; CPM praat nooit rechtstreeks met Logstash.</p>
+<pre><code>   monitoring-data  ──►  registry ──► scores ──► suggesties ──► state ──► pipelines
+   (wat bestaat er)      (welke      (hoe vol   (wat zou      (wat     (wat draait
+                          clusters)   zit het)   beter zijn)   hoort)   er echt)</code></pre>
+<p>Alle CPM-toestand staat in gewone Elasticsearch-indices op het centrale cluster, met het prefix <code>cpm-</code>. Er is geen database, geen state-bestand en geen geheugen tussen runs. Wil je weten wat CPM denkt, dan query je een index.</p>
+<hr>
+<h2>2. Anatomie van een watcher</h2>
+<p>Een watcher is één JSON-document met vijf onderdelen. Zo ziet het skelet eruit, sterk ingekort:</p>
+<pre><code>{
+  &quot;trigger&quot;:   { &quot;schedule&quot;: { &quot;cron&quot;: &quot;0 15 0 * * ?&quot; } },
+  &quot;input&quot;:     { &quot;chain&quot;: { &quot;inputs&quot;: [ ... zoekopdrachten ... ] } },
+  &quot;condition&quot;: { &quot;always&quot;: {} },
+  &quot;transform&quot;: { &quot;script&quot;: { &quot;source&quot;: &quot;... Painless ...&quot;, &quot;lang&quot;: &quot;painless&quot; } },
+  &quot;actions&quot;:   { &quot;index_state&quot;: { &quot;webhook&quot;: { ... } } }
+}</code></pre>
+<p><strong>trigger</strong> bepaalt wanneer hij draait. Bij CPM is dat meestal een cron, één keer per nacht. <code>cpm-forecast-trigger</code> is de uitzondering en draait op een interval van een uur.</p>
+<p><strong>input</strong> haalt data op. CPM gebruikt vrijwel altijd een <code>chain</code> van meerdere zoekopdrachten. Elke zoekopdracht krijgt een naam, en het resultaat komt onder die naam in de payload te staan. Dit:</p>
+<pre><code>&quot;input&quot;: { &quot;chain&quot;: { &quot;inputs&quot;: [
+  { &quot;registry&quot;: { &quot;search&quot;: { &quot;request&quot;: {
+      &quot;indices&quot;: [&quot;cpm-cluster-registry&quot;],
+      &quot;body&quot;: { &quot;size&quot;: 32, &quot;query&quot;: { &quot;match_all&quot;: {} } } } } } },
+  { &quot;scores&quot;:   { &quot;search&quot;: { &quot;request&quot;: {
+      &quot;indices&quot;: [&quot;cpm-scores&quot;],
+      &quot;body&quot;: { &quot;size&quot;: 1, &quot;sort&quot;: [{&quot;scored_at&quot;: &quot;desc&quot;}] } } } } }
+] } }</code></pre>
+<p>levert in het script <code>ctx.payload.registry.hits.hits</code> en <code>ctx.payload.scores.hits.hits</code> op.</p>
+<p><strong>condition</strong> bepaalt of de acties mogen draaien. CPM zet dit meestal op <code>always</code>, en filtert pas in de acties zelf.</p>
+<p><strong>transform</strong> is het rekenwerk, in Painless. Wat het script <code>return</code>t vervangt de payload voor de acties.</p>
+<p><strong>actions</strong> doen het schrijfwerk. CPM gebruikt uitsluitend <code>webhook</code>-acties die de REST-API van het eigen cluster aanroepen. Dat voelt omslachtig, maar een watcher heeft geen andere manier om een willekeurig endpoint te benaderen, en CPM moet naar <code>/_logstash/pipeline</code> en <code>/_ml/.../_forecast</code> kunnen schrijven.</p>
+<h3>Uitvoeringsvolgorde</h3>
+<p><code>trigger</code> → <code>input</code> → <code>condition</code> → <code>transform</code> → <code>actions</code>. De acties draaien in de volgorde waarin ze in het document staan.</p>
+<h3>Een watcher testen zonder te wachten</h3>
+<pre><code>curl -sk -u elastic:$PW -X POST \
+  https://central.example.net/_watcher/watch/cpm-state-manager/_execute \
+  -H &#x27;Content-Type: application/json&#x27; \
+  -d &#x27;{&quot;record_execution&quot;:false,&quot;action_modes&quot;:{&quot;_all&quot;:&quot;simulate&quot;}}&#x27;</code></pre>
+<p>Twee vlaggen die je uit elkaar moet houden:</p>
+<ul>
+<li><code>record_execution: false</code> onderdrukt alleen het schrijven naar de watcher-historie. <strong>De acties draaien gewoon.</strong> Dit is dus geen droogloop.</li>
+<li><code>action_modes: {&quot;_all&quot;: &quot;simulate&quot;}</code> maakt het wél een droogloop.</li>
+</ul>
+<p>De respons bevat het volledige tussenresultaat: <code>result.input.payload</code> met wat de zoekopdrachten opleverden, en <code>result.transform.payload</code> met wat je script teruggaf. Dat is je debugger.</p>
+<h3>De belangrijkste valkuil in het hele project</h3>
+<p>Een watcher kan <code>success</code> melden terwijl er niets gebeurt. Kijk daarom altijd eerst naar de status van de <strong>transform</strong>, niet naar die van de acties:</p>
+<pre><code>&quot;transform&quot;: { &quot;status&quot;: &quot;failure&quot;, &quot;reason&quot;: &quot;runtime error&quot;, ... }</code></pre>
+<p>Faalt de transform, dan is de payload leeg en doen de acties niets, maar de watcher zelf rapporteert geen fout op het niveau waar de meeste mensen kijken.</p>
+<hr>
+<h2>3. Painless in twintig minuten</h2>
+<p>Painless is de scripttaal van Elasticsearch. Het lijkt op Java, maar is bewust beperkt: geen imports, geen eigen classes, geen bestandstoegang, geen netwerk. Je krijgt een script, een payload en een returnwaarde.</p>
+<h3>Wat je nodig hebt</h3>
+<pre><code>// typen
+String naam = &quot;logs-nginx-default&quot;;
+long teller = 0L;
+double score = 20.5;
+boolean actief = true;
+
+// def = &quot;wat het ook is&quot;, vergelijkbaar met var/any
+def waarde = ctx.payload.registry.hits.hits;
+
+// collecties
+Map m = new HashMap();
+m.put(&#x27;cluster_id&#x27;, &#x27;dc-a&#x27;);
+List l = new ArrayList();
+l.add(&#x27;logs-nginx-default&#x27;);
+
+// lezen mag met punt of met haakjes
+String cid = (String)m.get(&#x27;cluster_id&#x27;);
+String c2  = (String)m[&#x27;cluster_id&#x27;];
+
+// itereren
+for (def hit : ctx.payload.registry.hits.hits) {
+  String id = (String)hit._source.cluster_id;
+}
+for (int i = 0; i &lt; l.size(); i++) { ... }
+
+// stringbewerkingen die CPM veel gebruikt
+naam.startsWith(&#x27;logs-&#x27;);
+naam.endsWith(&#x27;-default&#x27;);
+naam.indexOf(&#x27;-&#x27;);
+naam.lastIndexOf(&#x27;-&#x27;);
+naam.substring(0, 5);
+naam.equals(&#x27;x&#x27;);          // gebruik dit, niet ==
+naam.compareTo(&#x27;y&#x27;) &lt; 0;   // alfabetische volgorde</code></pre>
+<h3>Wat er anders is dan je gewend bent</h3>
+<ul>
+<li><strong>Vergelijk strings met <code>equals</code>.</strong> <code>==</code> werkt soms wel en soms niet.</li>
+<li><strong>Er is geen <code>var</code>.</strong> Gebruik <code>def</code> of een echt type.</li>
+<li><strong>Geen lambda&#x27;s in CPM.</strong> Painless kent ze, maar de code hier gebruikt gewone lussen. Houd dat aan; het scheelt verrassingen bij het debuggen.</li>
+<li><strong>Regex kan, maar wordt niet gebruikt.</strong> Elasticsearch staat regex in Painless standaard beperkt toe. CPM doet alle patroonherkenning met de hand, met <code>startsWith</code> en <code>endsWith</code>. Dat is een historische keuze, geen technische eis.</li>
+<li><strong>Casten is vaak verplicht.</strong> Haal je iets uit een <code>Map</code> of uit de payload, dan is het een <code>def</code>. Wil je er een string-methode op aanroepen, cast dan eerst: <code>((String)m.get(&#x27;topic&#x27;)).startsWith(&#x27;logs-&#x27;)</code>.</li>
+</ul>
+<h3>De payload lezen</h3>
+<p><code>ctx.payload</code> is de uitvoer van de inputs. Voor een zoekopdracht met de naam <code>registry</code> zijn dit de bruikbare paden:</p>
+<pre><code>ctx.payload.registry.hits.hits           // lijst met documenten
+ctx.payload.registry.hits.hits[0]._id    // document-id
+ctx.payload.registry.hits.hits[0]._source.cluster_id
+ctx.payload.registry.aggregations.by_cluster.buckets</code></pre>
+<p><code>ctx.execution_time</code> is het moment van uitvoeren, bruikbaar als tijdstempel:</p>
+<pre><code>String ts = ctx.execution_time.toString();</code></pre>
+<h3>Altijd op null controleren</h3>
+<p>Dit is geen stijlkwestie maar de meest voorkomende storing in dit project. Een zoekopdracht over een <strong>cross-cluster alias</strong> komt bij een onbereikbaar cluster niet terug met een fout maar met een leeg resultaat <strong>zonder</strong> <code>aggregations</code>. Dit crasht dan:</p>
+<pre><code>def buckets = ctx.payload.dataset_rates.aggregations.by_cluster.buckets;
+// cannot access method/field [by_cluster] from a null def reference</code></pre>
+<p>Doe het altijd zo:</p>
+<pre><code>def buckets = new ArrayList();
+if (ctx.payload.dataset_rates != null
+    &amp;&amp; ctx.payload.dataset_rates.aggregations != null
+    &amp;&amp; ctx.payload.dataset_rates.aggregations.by_cluster != null
+    &amp;&amp; ctx.payload.dataset_rates.aggregations.by_cluster.buckets != null) {
+  buckets = ctx.payload.dataset_rates.aggregations.by_cluster.buckets;
+}</code></pre>
+<p>Zonder die controle stopt de hele transform, schrijft de watcher niets weg, en meldt hij nog steeds <code>success</code> op actieniveau.</p>
+<h3>Wat het script teruggeeft</h3>
+<p>De returnwaarde vervangt de payload voor de acties. CPM geeft standaard een <code>Map</code> terug met lijsten erin:</p>
+<pre><code>Map out = new HashMap();
+out.put(&#x27;state&#x27;, stateEntries);              // lijst met documenten
+out.put(&#x27;state_deletions&#x27;, stateDeletions);  // lijst met ids
+return out;</code></pre>
+<p>Een actie kan daarna over zo&#x27;n lijst itereren, zie het volgende hoofdstuk.</p>
+<h3>Painless los uitproberen</h3>
+<pre><code>curl -sk -u elastic:$PW -X POST \
+  https://central.example.net/_scripts/painless/_execute \
+  -H &#x27;Content-Type: application/json&#x27; -d &#x27;{
+    &quot;script&quot;: {
+      &quot;source&quot;: &quot;return params.t.startsWith(params.p);&quot;,
+      &quot;params&quot;: { &quot;t&quot;: &quot;logs-nginx-default&quot;, &quot;p&quot;: &quot;logs-&quot; }
+    }}&#x27;</code></pre>
+<p>Dit is verreweg de snelste manier om een stukje logica te testen zonder een watcher uit te rollen.</p>
+<hr>
+<h2>4. Mustache in tien minuten</h2>
+<p>Mustache is de sjabloontaal van de acties. Waar Painless bepaalt *wat* er geschreven wordt, bepaalt Mustache *hoe* de HTTP-aanroep eruitziet.</p>
+<p>Je hebt maar drie dingen nodig.</p>
+<h3>Een waarde invullen</h3>
+<pre><code>&quot;path&quot;: &quot;/cpm-pipeline-state/_doc/{{ctx.payload.topic}}&quot;</code></pre>
+<p>Alles tussen dubbele accolades wordt vervangen door de waarde uit de payload.</p>
+<h3>Een heel object als JSON wegschrijven</h3>
+<pre><code>&quot;body&quot;: &quot;{{#toJson}}ctx.payload{{/toJson}}&quot;</code></pre>
+<p><code>toJson</code> is een uitbreiding van Elasticsearch op standaard-Mustache. Het zet het hele object om naar JSON. Zonder die wrapper krijg je de tekstweergave van een Java-object, en dat is geen geldige JSON.</p>
+<h3>Herhalen over een lijst</h3>
+<p>Dit gebeurt niet in Mustache zelf maar met het veld <code>foreach</code> op de actie:</p>
+<pre><code>&quot;index_state&quot;: {
+  &quot;foreach&quot;: &quot;ctx.payload.state&quot;,
+  &quot;max_iterations&quot;: 16384,
+  &quot;webhook&quot;: {
+    &quot;method&quot;: &quot;put&quot;,
+    &quot;path&quot;: &quot;/cpm-pipeline-state/_doc/{{ctx.payload.data_stream_type}}-{{ctx.payload.dataset}}-{{ctx.payload.namespace}}&quot;,
+    &quot;body&quot;: &quot;{{#toJson}}ctx.payload{{/toJson}}&quot;
+  }
+}</code></pre>
+<p>Let goed op wat er gebeurt: <strong>binnen een <code>foreach</code> betekent <code>ctx.payload</code> niet meer de hele payload, maar het huidige element uit de lijst.</strong> Dat is de meest verwarrende regel van het hele mechanisme. De actie hierboven draait dus één PUT per item in <code>ctx.payload.state</code>, en <code>{{ctx.payload.dataset}}</code> is het veld <code>dataset</code> van dát item.</p>
+<h3>Een actie faalt op een niet-2xx antwoord</h3>
+<p>Een <code>webhook</code>-actie meldt <code>failure</code> bij elke statuscode buiten 2xx, ook bij een 404 op een DELETE van iets dat er niet is. Wil je dat niet, dan moet je in Painless zorgen dat je zo&#x27;n aanroep niet aanmaakt.</p>
+<hr>
+<h2>5. De Jinja-laag eromheen</h2>
+<p>De watchers worden uitgerold met Ansible. De bestanden in <code>ansible/roles/elastic_cpm/templates/</code> zijn Jinja2-sjablonen met de extensie <code>.json.j2</code>, en Ansible vult daar omgevingsspecifieke waarden in.</p>
+<p>Hier zit een probleem: <strong>Jinja2 en Mustache gebruiken allebei <code>{{ }}</code>.</strong> Zou Ansible het hele bestand verwerken, dan probeert Jinja2 <code>{{ctx.payload.topic}}</code> te vervangen door een variabele <code>ctx</code> die niet bestaat.</p>
+<p>De oplossing is dat het hele bestand in een <code>{% raw %}</code>-blok staat, dat alleen opengebroken wordt waar Ansible écht iets moet invullen:</p>
+<pre><code>{% raw %}
+{
+  &quot;actions&quot;: {
+    &quot;index_state&quot;: {
+      &quot;webhook&quot;: {
+        &quot;host&quot;: &quot;{% endraw %}{{ webhook_host }}{% raw %}&quot;,
+        &quot;path&quot;: &quot;/cpm-pipeline-state/_doc/{{ctx.payload.topic}}&quot;,
+        &quot;headers&quot;: {
+          &quot;Authorization&quot;: &quot;ApiKey {% endraw %}{{ watcher_api_key.encoded }}{% raw %}&quot;
+        }
+      }
+    }
+  }
+}
+{% endraw %}</code></pre>
+<p>Lees dat zorgvuldig. <code>{{ webhook_host }}</code> staat <strong>buiten</strong> raw en wordt door Ansible ingevuld. <code>{{ctx.payload.topic}}</code> staat <strong>binnen</strong> raw en blijft staan, zodat Mustache hem later ziet.</p>
+<p>Vergeet je een <code>{% endraw %}</code>, dan krijg je meestal een lege waarde of een Jinja-fout bij het uitrollen. Vergeet je een <code>{% raw %}</code>, dan verdwijnt je Mustache-expressie zonder foutmelding.</p>
+<h3>Uitrollen</h3>
+<pre><code>cd ansible
+.venv/bin/ansible-playbook -i inventories/&lt;omgeving&gt;/hosts site.yml --tags watchers</code></pre>
+<p>De taak leest het sjabloon en doet er een <code>PUT /_watcher/watch/&lt;id&gt;</code> mee. Een watcher heeft geen versiebeheer: de PUT vervangt hem volledig.</p>
+<hr>
+<h2>6. Het datamodel</h2>
+<p>Alle toestand staat in indices met het prefix <code>cpm-</code> op het centrale cluster.</p>
+<table><thead><tr>
+<th>index</th>
+<th>rol</th>
+</tr></thead><tbody>
+<tr><td><code>cpm-cluster-registry</code></td><td>welke clusters bestaan er en doen ze mee</td></tr>
+<tr><td><code>cpm-routing-config</code></td><td>globale gewichten (<code>_global</code>) en stream locks</td></tr>
+<tr><td><code>cpm-stream-exclusions</code></td><td>patronen van streams die buiten CPM blijven</td></tr>
+<tr><td><code>cpm-scores</code></td><td>uitkomst van de laatste scoringsronde</td></tr>
+<tr><td><code>cpm-routing-suggestions</code></td><td>voorstellen van de advisor</td></tr>
+<tr><td><code>cpm-pipeline-state</code></td><td><strong>de waarheid</strong>: welk topic in welke pipeline hoort</td></tr>
+<tr><td><code>cpm-pipeline-templates</code></td><td>de Logstash-sjablonen en hun instellingen</td></tr>
+<tr><td><code>cpm-pipeline-history</code></td><td>historie van verplaatsingen</td></tr>
+<tr><td><code>cpm-stream-coverage</code></td><td>streams die door geen enkele pipeline gedekt worden</td></tr>
+<tr><td><code>cpm-watcher-executions</code></td><td>afgevlakte watcher-historie voor het dashboard</td></tr>
+<tr><td><code>cpm-bytes-per-event</code></td><td>gemiddelde eventgrootte per stream</td></tr>
+<tr><td><code>cpm-cluster-scores</code></td><td>scores per cluster als tijdreeks</td></tr>
+</tbody></table>
+<h3>cpm-pipeline-state</h3>
+<p>De belangrijkste index. Eén document per data stream, met als id <code>&lt;type&gt;-&lt;dataset&gt;-&lt;namespace&gt;</code>.</p>
+<pre><code>{
+  &quot;data_stream_type&quot;: &quot;logs&quot;,
+  &quot;dataset&quot;: &quot;nginx&quot;,
+  &quot;namespace&quot;: &quot;default&quot;,
+  &quot;topic&quot;: &quot;logs-nginx-default&quot;,
+  &quot;pipeline_type&quot;: &quot;catchall&quot;,
+  &quot;pipeline_id&quot;: &quot;dc-central_cpm-catchall-Xa732PlTR4S3tlxY9n2FSQ&quot;,
+  &quot;cluster_id&quot;: &quot;Xa732PlTR4S3tlxY9n2FSQ&quot;,
+  &quot;dc&quot;: &quot;dc-central&quot;,
+  &quot;home_cluster_id&quot;: &quot;Xa732PlTR4S3tlxY9n2FSQ&quot;,
+  &quot;promoted_reason&quot;: &quot;cluster had geen dedicated pipeline&quot;,
+  &quot;updated_at&quot;: &quot;2026-09-03T10:23:11.000Z&quot;
+}</code></pre>
+<p><code>home_cluster_id</code> is het cluster waar de data volgens monitoring fysiek staat. <code>cluster_id</code> is waar CPM hem naartoe stuurt. Verschillen die twee, dan is de stream verplaatst.</p>
+<h3>Strikte mappings</h3>
+<p>Bijna alle <code>cpm-</code>-indices hebben <code>&quot;dynamic&quot;: &quot;strict&quot;</code>. Schrijf je een veld dat niet in de mapping staat, dan <strong>weigert Elasticsearch het hele document</strong>:</p>
+<pre><code>StrictDynamicMappingException: mapping set to strict,
+dynamic introduction of [promoted_reason] within [_doc] is not allowed</code></pre>
+<p>Voeg je dus een veld toe in Painless, voeg het dan in dezelfde wijziging toe aan <code>ansible/roles/elastic_cpm/files/json/index_&lt;naam&gt;.json</code>. De taak met de tag <code>indices</code> stuurt het hele <code>mappings</code>-blok naar <code>PUT /&lt;index&gt;/_mapping</code>, dus bestaande omgevingen worden bij de eerstvolgende run bijgewerkt.</p>
+<p>Eén index wijkt bewust af. <code>cpm-watcher-executions</code> staat op <code>&quot;dynamic&quot;: false</code>, omdat daar documenten uit de watcher-historie van Elasticsearch zelf in landen. Die bron kan velden toevoegen waar wij geen zeggenschap over hebben, en <code>strict</code> zou de transform dan permanent laten falen.</p>
+<hr>
+<h2>7. De watchers, één voor één</h2>
+<p>Zeven watchers. Zes vormen een keten, de zevende staat er los van.</p>
+<h3>cpm-registry-sync</h3>
+<p>Ontdekt welke clusters bestaan.</p>
+<p>Leest een aggregatie over de monitoring-index, gegroepeerd op <code>elasticsearch.cluster.id</code>, en schrijft per cluster een document in <code>cpm-cluster-registry</code> met de capaciteit: totale schijf, maximale heap en het aantal nodes.</p>
+<p>Belangrijk voor ontwikkelaars: de velden <code>dc</code>, <code>ingest_hosts</code> en <code>active</code> worden <strong>overgenomen uit het bestaande document</strong> en anders op een default gezet. Een nieuw ontdekt cluster krijgt <code>dc: unknown</code> en <code>active: false</code>. Die velden komen uit de Ansible-inventory, niet uit monitoring, en niet uit het node-attribuut <code>node.attr.dc</code> ondanks wat een comment elders suggereert.</p>
+<h3>cpm-forecast-trigger</h3>
+<p>Roept per ML-job <code>POST /_ml/anomaly_detectors/&lt;job&gt;/_forecast</code> aan, met een horizon van 24 uur. Verder gebeurt er niets. Deze watcher heeft geen input en geen transform.</p>
+<h3>cpm-scoring</h3>
+<p>Rekent per cluster een score uit.</p>
+<p>Leest vier aggregaties over <code>.ml-anomalies-*</code>, elk gefilterd op één job en op <code>result_type: model_forecast</code> binnen het venster <code>now</code> tot <code>now+24h</code>, gegroepeerd op <code>partition_field_value</code> (dat is de cluster-id) met <code>max(forecast_prediction)</code>.</p>
+<p>De score is dus een <strong>voorspelde piek</strong>, geen huidige meting. De vier waarden worden genormaliseerd naar 0-100 en gewogen opgeteld:</p>
+<pre><code>double diskScore  = dtotal  &gt; 0 ? (diskB  / dtotal)  * 100.0 : 0.0;
+double jvmScore   = jvmP;
+double shardScore = smax    &gt; 0 ? (shardC / smax)    * 100.0 : 0.0;
+double loadScore  = qthresh &gt; 0 ? (queueD / qthresh) * 100.0 : 0.0;
+double total = wDisk*diskScore + wJvm*jvmScore + wShard*shardScore + wLoad*loadScore;</code></pre>
+<p>Standaardgewichten zijn 0,50 voor disk, 0,25 voor jvm, 0,05 voor shard en 0,20 voor load. Ze worden overschreven door <code>cpm-routing-config/_global</code> als dat document bestaat. De noemer voor disk komt uit <code>disk_total_bytes</code> in de registry.</p>
+<p>Het resultaat is <strong>één document</strong> met een array <code>clusters</code> erin, niet één document per cluster.</p>
+<h3>cpm-routing-advisor</h3>
+<p>Stelt verplaatsingen voor.</p>
+<p>Berekent per stream een rate uit de groei van <code>elasticsearch.index.total.indexing.index_total</code> tussen de eerste en de laatste uurbucket binnen <code>now-2h</code>:</p>
+<pre><code>def tb = ib[&#x27;over_time&#x27;][&#x27;buckets&#x27;];
+if (tb.size() &gt;= 2) {
+  def v0 = tb.get(0)[&#x27;max_total&#x27;][&#x27;value&#x27;];
+  def v1 = tb.get(tb.size() - 1)[&#x27;max_total&#x27;][&#x27;value&#x27;];
+  if (v0 != null &amp;&amp; v1 != null) {
+    double diff = ((Number)v1).doubleValue() - ((Number)v0).doubleValue();
+    if (diff &gt; 0.0) delta = (long)diff;
+  }
+}
+...
+if (rate &lt;= 0L) continue;</code></pre>
+<p>Die laatste regel is belangrijker dan hij lijkt. Een stream zonder <strong>groei</strong> tussen twee uurbuckets telt niet mee. Eén grote bulk-load levert dus geen rate op: de teller springt één keer en staat daarna stil. Voor testen heb je doorlopende instroom nodig.</p>
+<p>Daarna sorteert hij de streams op rate en neemt de top-N, waarbij N het aantal clusters is. Elk cluster mag hoogstens één keer doelwit zijn. Er zijn twee fasen:</p>
+<ol>
+<li><strong>Greedy.</strong> Voor elke stream het lichtste nog ongebruikte cluster. Is bron gelijk aan doel, dan wordt het een lokale dedicated pipeline. Is het doel lichter dan de bron (<code>tgtScore &lt; srcScore</code>), dan een verplaatsing. Anders naar fase 2.</li>
+<li><strong>Gepaarde ruil.</strong> Een stream naar een zwaarder cluster mag alsnog, maar alleen als dat cluster in dezelfde ronde meer rate kwijtraakt dan deze stream toevoegt.</li>
+</ol>
+<p>De conditie <code>tgtScore &lt; srcScore</code> verklaart waarom er bij vrijwel gelijke scores weinig gebeurt: er is dan nooit een lichter cluster.</p>
+<h3>cpm-state-manager</h3>
+<p>Het hart. Bepaalt welk topic in welke pipeline hoort. Verwerkt in deze volgorde:</p>
+<ol>
+<li><strong>Stream locks</strong> uit <code>cpm-routing-config</code>. Handmatige overrides, gaan voor alles.</li>
+<li><strong>Routing-suggesties</strong> van de advisor. Hieruit ontstaan dedicated pipelines.</li>
+<li><strong>Bestaande state.</strong> Een stream die al toegewezen was, blijft waar hij zit. Hier worden ook uitgesloten streams opgeruimd.</li>
+<li><strong>Ontdekking uit monitoring.</strong> Nieuwe streams krijgen als thuiscluster het cluster waar ze volgens monitoring fysiek staan.</li>
+<li><strong>Catchall-toewijzing.</strong> Alles wat niet dedicated is, gaat naar de catchall van zijn cluster.</li>
+<li><strong>Promotie.</strong> Heeft een cluster na stap 1 tot 5 nog geen dedicated pipeline, dan wordt zijn drukste topic gepromoveerd. Pas vanaf twee topics, anders zou de catchall leeg achterblijven.</li>
+</ol>
+<p>Twee sets sturen dit aan. <code>seenClusters</code> bevat de clusters die al een dedicated hebben, waardoor er nooit twee ontstaan. <code>managedTopics</code> bevat de topics die al zijn toegewezen, waardoor stap 3 tot 6 elkaar niet overschrijven.</p>
+<p>De acties schrijven met <code>refresh=true</code>. Dat is geen detail: zonder refresh zijn de documenten nog niet zichtbaar voor de zoekopdracht van de pipeline-manager, die direct erna draait, en rendert die de state van de vorige cyclus.</p>
+<h3>cpm-pipeline-manager</h3>
+<p>Rendert en pusht de Logstash-pipelines.</p>
+<p>Leest <code>cpm-pipeline-state</code>, <code>cpm-cluster-registry</code>, <code>cpm-pipeline-templates</code> en <code>cpm-routing-config</code>. Groepeert de state-documenten op <code>pipeline_id</code> en bouwt per groep één pipeline door tekstvervanging in het sjabloon.</p>
+<p>Deze watcher kent <strong>geen uitsluitingen</strong>. Wat in <code>cpm-pipeline-state</code> staat, komt in een pipeline. Werkt een uitsluiting niet, zoek dan bij de state-manager.</p>
+<p>Twee stille <code>continue</code>s om te kennen:</p>
+<pre><code>Map cluster = (Map)registryMap.get(cid);
+if (cluster == null) continue;                       // cluster niet actief
+String ingestHosts = (String)cluster.get(&#x27;ingest_hosts&#x27;);
+if (ingestHosts == null || ingestHosts.isEmpty()) continue;   // geen host</code></pre>
+<p>Een cluster zonder <code>ingest_hosts</code> in de registry krijgt dus geen pipeline, zonder enige melding.</p>
+<h3>cpm-stream-coverage</h3>
+<p>Staat buiten de keten. Vergelijkt de streams die monitoring rapporteert met wat er in <code>cpm-pipeline-state</code> staat, en schrijft het verschil naar <code>cpm-stream-coverage</code>. Puur rapportage.</p>
+<hr>
+<h2>8. Van state naar Logstash-pipeline</h2>
+<p>De pipeline-manager bouwt de configuratie met platte tekstvervanging. Er zit geen sjabloontaal in; het zijn letterlijk <code>String.replace</code>-aanroepen.</p>
+<p>De sjablonen staan in <code>cpm-pipeline-templates</code>, met de documenten <code>catchall</code> en <code>dedicated</code>. Elk document bevat het veld <code>template</code> met de Logstash-configuratie en placeholders in hoofdletters.</p>
+<table><thead><tr>
+<th>placeholder</th>
+<th>catchall</th>
+<th>dedicated</th>
+<th>wordt</th>
+</tr></thead><tbody>
+<tr><td><code>__TOPICS_LIST__</code></td><td>ja</td><td>nee</td><td><code>&quot;a&quot;, &quot;b&quot;, &quot;c&quot;</code></td></tr>
+<tr><td><code>__TOPIC__</code></td><td>nee</td><td>ja</td><td>één topicnaam</td></tr>
+<tr><td><code>__GROUP_ID__</code></td><td>ja</td><td>ja</td><td>de Kafka consumer group</td></tr>
+<tr><td><code>__CONSUMER_THREADS__</code></td><td>ja</td><td>ja</td><td>getal uit het sjabloondocument</td></tr>
+<tr><td><code>__ES_HOSTS__</code></td><td>ja</td><td>ja</td><td><code>&quot;https://host:9200&quot;</code></td></tr>
+<tr><td><code>__KAFKA_BOOTSTRAP_DHL__</code></td><td>ja</td><td>ja</td><td>eerste Kafka-cluster</td></tr>
+<tr><td><code>__KAFKA_BOOTSTRAP_MLD__</code></td><td>ja</td><td>ja</td><td>tweede Kafka-cluster</td></tr>
+<tr><td><code>__DATASET__</code></td><td>nee</td><td>ja</td><td>datasetnaam</td></tr>
+<tr><td><code>__NAMESPACE__</code></td><td>nee</td><td>ja</td><td>namespace</td></tr>
+</tbody></table>
+<p>De gerenderde catchall ziet er zo uit, ingekort:</p>
+<pre><code>input {
+  kafka {
+    bootstrap_servers =&gt; &quot;kafka:9092,kafka2:9092,kafka3:9092&quot;
+    topics =&gt; [&quot;logs-nginx-default&quot;, &quot;logs-nginx-ns1&quot;]
+    group_id =&gt; &quot;cpm-ingest&quot;
+    consumer_threads =&gt; 16
+    codec =&gt; json
+  }
+  kafka { ... tweede Kafka-cluster, zelfde topics ... }
+}
+output {
+  elasticsearch {
+    hosts =&gt; [&quot;https://es-central:9200&quot;]
+    data_stream =&gt; true
+    api_key =&gt; &quot;${VAR_API_KEY}&quot;
+  }
+}</code></pre>
+<p>Twee dingen die je moet weten:</p>
+<ul>
+<li><strong>Er zijn twee Kafka-inputs per pipeline</strong>, voor twee Kafka-clusters. Het aantal consumer-threads geldt dus per input, niet per pipeline.</li>
+<li><strong><code>${VAR_API_KEY}</code> is geen placeholder van CPM.</strong> Dat lost Logstash zelf op uit zijn omgevingsvariabelen. CPM zet daar niets in.</li>
+</ul>
+<h3>De naam van een pipeline</h3>
+<pre><code>&lt;dc&gt;_cpm-&lt;catchall|dedicated&gt;-&lt;cluster_id&gt;</code></pre>
+<p>Het <code>dc</code>-prefix is functioneel. Elke Logstash-instantie haalt alleen zijn eigen pipelines op met <code>xpack.management.pipeline.id: [&quot;dc-central_*&quot;]</code>. Verander je <code>dc</code>, dan verandert de pipelinenaam mee, blijft de oude pipeline achter in <code>/_logstash/pipeline</code> en pakt Logstash de nieuwe niet op.</p>
+<h3>De topic-extensie</h3>
+<p>Voor gescheiden omgevingen op één Kafka-cluster bestaat <code>kafka_topic_extension</code>. Ansible zet die waarde in de sjabloondocumenten, en de pipeline-manager plakt hem achter elke topicnaam:</p>
+<pre><code>String topic = streamType + &#x27;-&#x27; + dataset + &#x27;-&#x27; + namespace + topicExt;</code></pre>
+<p>Voor de catchall gebeurt hetzelfde per topic in de lijst. Let op de reikwijdte: de extensie zit <strong>alleen op de Kafka-topicnaam</strong>, niet op de naam van de data stream in Elasticsearch. Alles wat tegen streamnamen matcht, zoals uitsluitingen en locks, gebruikt dus de kale naam.</p>
+<p>Deelt een acceptatie-omgeving een Kafka-cluster met productie, dan moet ook <code>cpm_kafka_group_id</code> verschillen. Binnen één consumer group verdeelt Kafka de partities over álle leden, ongeacht op welke topics een lid heeft ingeschreven. Een productie-consumer krijgt dan een acceptatie-partitie toegewezen, commit de offset en gooit de events weg.</p>
+<hr>
+<h2>9. Het uitsluitingsmechanisme</h2>
+<p>Een uitsluiting is een document in <code>cpm-stream-exclusions</code> met een veld <code>topic_pattern</code>. De matcher zit met de hand in Painless:</p>
+<pre><code>if (pattern.indexOf(&#x27;*&#x27;) &lt; 0) {
+  if (topic.equals(pattern)) { topicExcluded = true; break; }
+} else {
+  int star = pattern.indexOf(&#x27;*&#x27;);
+  String pre = pattern.substring(0, star);
+  String suf = pattern.substring(star + 1);
+  if (pre.isEmpty()) {
+    if (topic.endsWith(suf)) { topicExcluded = true; break; }
+  } else if (suf.isEmpty()) {
+    if (topic.startsWith(pre)) { topicExcluded = true; break; }
+  } else {
+    if (topic.startsWith(pre) &amp;&amp; topic.endsWith(suf)) { topicExcluded = true; break; }
+  }
+}</code></pre>
+<p>Lees goed wat hier staat: er wordt alleen naar het <strong>eerste</strong> sterretje gekeken. Alles daarna is letterlijke tekst. <code>*-webapp*</code> wordt dus <code>endsWith(&quot;-webapp*&quot;)</code> en matcht nooit iets.</p>
+<table><thead><tr>
+<th>patroon</th>
+<th>wordt</th>
+<th>raakt</th>
+</tr></thead><tbody>
+<tr><td><code>logs-webapp-*</code></td><td><code>startsWith(&quot;logs-webapp-&quot;)</code></td><td>alle namespaces van die dataset</td></tr>
+<tr><td><code>*-webapp-default</code></td><td><code>endsWith(&quot;-webapp-default&quot;)</code></td><td>ook <code>metrics-webapp-default</code></td></tr>
+<tr><td><code>logs-*-default</code></td><td>beide</td><td>alles van type logs op namespace default</td></tr>
+<tr><td><code>*-webapp*</code></td><td><code>endsWith(&quot;-webapp*&quot;)</code></td><td>niets</td></tr>
+</tbody></table>
+<p><strong>Dit blok staat negen keer in de repo</strong>: zeven keer in de state-manager, één keer in de advisor en één keer in de stream-coverage. Plus nog een aparte Python-implementatie voor het controlecommando. Wil je de matcher uitbreiden, bijvoorbeeld naar meerdere sterretjes, dan moet dat op alle tien de plekken identiek gebeuren. Eén afwijkende kopie geeft een uitsluiting die in de ene watcher wel werkt en in de andere niet.</p>
+<p>Een glob met meerdere sterretjes is technisch prima haalbaar in Painless, zonder regex: splits het patroon op <code>*</code>, controleer het eerste deel met <code>startsWith</code>, het laatste met <code>endsWith</code>, en scan de tussendelen op volgorde met <code>indexOf</code>. Dat is ongeveer vijftien regels.</p>
+<hr>
+<h2>10. De Kibana-plugin</h2>
+<p>De plugin geeft een beheerscherm onder Stack Management → Ingest → Cluster Pipeline Manager. De broncode staat in <code>kibana_plugin/cpm/</code>.</p>
+<pre><code>cpm/
+  kibana.json         manifest, met kibanaVersion
+  common/             constanten en types, gedeeld
+  public/             React-frontend
+    application.tsx   mountpunt
+    components/       de tabbladen
+    services/         HTTP-aanroepen naar de eigen server-routes
+  server/             Kibana-serverkant
+    routes/index.ts   de /api/cpm/* endpoints
+    lib/check_access.ts</code></pre>
+<p>De frontend praat nooit rechtstreeks met Elasticsearch. Hij roept de eigen server-routes aan, en die gebruiken de Elasticsearch-client van Kibana. Dat is waarom de plugin de rechten van de ingelogde gebruiker respecteert.</p>
+<table><thead><tr>
+<th>tabblad</th>
+<th>index of API</th>
+</tr></thead><tbody>
+<tr><td>Clusters</td><td><code>cpm-cluster-registry</code>, zet <code>active</code></td></tr>
+<tr><td>Scoring weights</td><td><code>cpm-routing-config/_global</code></td></tr>
+<tr><td>Stream locks</td><td><code>cpm-routing-config</code>, documenten met <code>config_type: stream_lock</code></td></tr>
+<tr><td>Run CPM</td><td><code>POST /_watcher/watch/&lt;id&gt;/_execute</code></td></tr>
+</tbody></table>
+<p>De routes zijn interne Kibana-API&#x27;s. Roep je ze met curl aan, dan krijg je:</p>
+<pre><code>uri [/api/cpm/clusters] with method [get] exists but is not available
+with the current configuration</code></pre>
+<p>Dat is geen fout in de plugin. Voeg de headers toe die Kibana verwacht:</p>
+<pre><code>curl -s -u elastic:$PW \
+  -H &#x27;kbn-xsrf: true&#x27; -H &#x27;x-elastic-internal-origin: Kibana&#x27; \
+  http://localhost:5601/api/cpm/clusters</code></pre>
+<p>De plugin wordt gecompileerd tegen een exacte Kibana-versie. <code>kibanaVersion</code> in <code>kibana.json</code> en <code>kibana.version</code> in <code>package.json</code> moeten allebei kloppen, anders weigert Kibana de plugin te laden.</p>
+<hr>
+<h2>11. Een wijziging maken</h2>
+<h3>Logica in een watcher aanpassen</h3>
+<ol>
+<li>Pas het <code>.json.j2</code>-sjabloon aan in <code>ansible/roles/elastic_cpm/templates/</code>. Let op de <code>{% raw %}</code>-blokken.</li>
+<li>Voeg je een veld toe aan een document, pas dan ook de mapping aan in <code>files/json/index_&lt;naam&gt;.json</code>. Bijna alle indices zijn <code>strict</code>.</li>
+<li>Rol uit: <code>ansible-playbook -i inventories/&lt;omgeving&gt;/hosts site.yml --tags watchers</code> en bij een mappingwijziging ook <code>--tags indices</code>.</li>
+<li>Test met <code>_execute</code> in simulate-modus en lees <code>result.transform.status</code>.</li>
+<li>Draai de keten en vergelijk <code>cpm-pipeline-state</code> met <code>/_logstash/pipeline</code>.</li>
+</ol>
+<h3>Painless in een JSON-string bewerken</h3>
+<p>Het script staat als één geëscapete regel in het sjabloon, met <code>\n</code> voor regeleindes. Handmatig bewerken is foutgevoelig. Werk met een klein hulpprogramma: haal de <code>source</code>-string eruit, decodeer hem, bewerk hem, codeer hem terug. Controleer daarna of de haakjes in balans zijn en of het bestand nog geldige JSON oplevert na het renderen van Jinja.</p>
+<h3>Wat je nooit moet doen</h3>
+<ul>
+<li><strong>Een <code>for</code> over een aggregatie zonder null-controle.</strong> Zie hoofdstuk 3.</li>
+<li><strong>Een veld schrijven dat niet in de mapping staat.</strong> De hele transform valt om.</li>
+<li><strong>Een DELETE in een <code>foreach</code> zonder te controleren of het document bestaat.</strong> Een 404 telt als <code>failure</code> en zet een nepfout naast je echte fouten.</li>
+<li><strong>Aannemen dat een tag op een <code>include_tasks</code> doorwerkt naar de taken erin.</strong> Dat doet hij niet. De taken moeten de tag zelf dragen.</li>
+<li><strong>De pipeline-templates aanpassen zonder na te denken over productie.</strong> De bestanden <code>cpm-pipeline-template-*.json</code> gelden voor alle omgevingen.</li>
+</ul>
+<h3>Testen zonder productie te raken</h3>
+<p>Er zijn twee Docker-omgevingen met elk drie Elasticsearch-clusters, een eigen monitoring-cluster en drie Logstash-instanties. De inventories <code>local</code> en <code>acc</code> wijzen daarnaartoe. Draai daar je wijziging, laat de keten een paar rondes lopen en vergelijk de uitkomst met de state.</p>
+<hr>
+<h2>12. Waar het pijn doet</h2>
+<p>Een eerlijke lijst van dingen die je gaat tegenkomen.</p>
+<p><strong>De matcher staat negen keer in de repo.</strong> Elke uitbreiding is een kopieeroefening. Dit is de grootste rem op het verbeteren van de uitsluitingslogica.</p>
+<p><strong>De veldsubstitutie is half aangesloten.</strong> Een Ansible-taak zoekt op welke veldnamen de monitoring-index gebruikt en bouwt daar een feit <code>cpm_field_substitutions</code> van. Dat feit wordt nergens gebruikt. Alleen de ML-datafeeds krijgen de gevonden namen mee, via losse <code>replace</code>-aanroepen. De watchers hebben alle veldnamen hard staan. Stapt de omgeving over van Metricbeat naar Elastic Agent, dan moeten vier watcher-sjablonen met de hand mee.</p>
+<p><strong>De monitoring-index staat op twee plekken.</strong> De watchers hebben <code>monitoring:.monitoring-es-8-*</code> hard staan; de datafeeds en de veldprobe bouwen hem uit een variabele. Lopen die uit de pas, dan zoeken de datafeeds op de verkeerde plek, vinden niets, en blijven alle scores op nul zonder foutmelding.</p>
+<p><strong>Een dedicated pipeline is sticky.</strong> Eenmaal toegewezen blijft een stream dedicated, ook als een andere stream later veel drukker wordt. Er is geen mechanisme dat dat herziet.</p>
+<p><strong>De scores liggen in de praktijk dicht bij elkaar.</strong> Daardoor komt de advisor zelden in actie, want die verplaatst alleen naar een lichter cluster. De promotiestap in de state-manager is daar de compensatie voor, geen oplossing.</p>
+<p><strong>Watcher-code is niet te unit-testen.</strong> Er is geen testharnas. De snelste feedbacklus is <code>_scripts/painless/_execute</code> voor een los stuk logica, en daarna <code>_execute</code> met <code>action_modes: simulate</code> op de hele watcher.</p>

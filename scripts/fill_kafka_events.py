@@ -9,11 +9,19 @@ dead-letter-queue are excluded so the router is not triggered.
 
 Only stdlib is used.
 
+With `--only-suffix` the run is limited to the topics ending in that suffix,
+which is how the acceptance environment is fed: the "-acc" topics only, so the
+production topics stay untouched.
+
 Examples:
   ./fill_kafka_events.py                 # 1,000,000 spread + 4x 200,000
   ./fill_kafka_events.py --dry-run
   ./fill_kafka_events.py --total 1000000 --big-count 200000 \
       --big-topics logs-system.auth-default,logs-nginx-prod,...
+
+  # acceptance only
+  ./fill_kafka_events.py --only-suffix=-acc --dry-run
+  ./fill_kafka_events.py --only-suffix=-acc
 """
 from __future__ import annotations
 
@@ -38,6 +46,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--parallel", type=int, default=4, help="concurrent perf-test producers")
     p.add_argument("--exclude", default="test-dataset,dead-letter-queue",
                    help="comma-separated topics to skip")
+    p.add_argument("--only-suffix", default="",
+                   help='Only fill topics ending in this suffix (e.g. "-acc" for the '
+                        "acceptance environment); the rest is left alone")
     p.add_argument("--seed", type=int, default=20260701)
     p.add_argument("--dry-run", action="store_true")
     return p.parse_args()
@@ -58,6 +69,12 @@ def main() -> int:
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         print(f"Could not list topics: {e}", file=sys.stderr)
         return 2
+    if args.only_suffix:
+        topics = [t for t in topics if t.endswith(args.only_suffix)]
+        # test-dataset/dead-letter-queue carry the suffix too, so re-apply the
+        # exclusions to their suffixed twins.
+        topics = [t for t in topics if t[: -len(args.only_suffix)] not in excl]
+        print(f'limited to topics ending in "{args.only_suffix}": {len(topics)}')
     if not topics:
         print("No topics to fill.", file=sys.stderr)
         return 2
@@ -72,6 +89,7 @@ def main() -> int:
     else:
         prefer = ["logs-system.auth-default", "logs-winlog.winlog-default",
                   "logs-nginx-prod", "metrics-oracle.performance-default"]
+        prefer = [t + args.only_suffix for t in prefer]
         big = [t for t in prefer if t in topics]
         for t in topics:  # top up to 4 if any preferred are missing
             if len(big) >= 4:

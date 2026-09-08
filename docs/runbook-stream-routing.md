@@ -60,19 +60,79 @@ GET cpm-pipeline-state/_doc/logs-system.auth-default
 
 ## B. EXCLUDE — stream uit CPM-beheer halen
 
+Drie manieren, allemaal schrijvend naar dezelfde index `cpm-stream-exclusions`.
+`topic_pattern` is de topicnaam == de **data stream-naam**
+(`<type>-<dataset>-<namespace>`) en mag één **wildcard** (`*`) bevatten — de
+state-manager matcht exact, prefix (`logs-winlog.*`), suffix (`*-tst`) of
+prefix+suffix.
+
+### B1. Script — ad hoc, voor één stream (aanbevolen)
+```bash
+scripts/cpm_exclude_stream.py --insecure add logs-winlog.winlog-default --reason "ticket Y"
+scripts/cpm_exclude_stream.py --insecure add '*-tst' --reason "alle test-streams"
+scripts/cpm_exclude_stream.py --insecure list
+scripts/cpm_exclude_stream.py --insecure check logs-nginx-prod   # welk patroon matcht?
+scripts/cpm_exclude_stream.py --insecure remove logs-winlog.winlog-default
+```
+`check` gebruikt exact dezelfde matchregels als de watcher, dus je kunt vooraf
+zien wat een patroon raakt zonder de cyclus te draaien.
+
+### B2. Ansible — declaratief, hoort bij de omgeving
+In `inventories/<env>/group_vars/all.yml`:
+```yaml
+cpm_stream_exclusions:
+  - { pattern: "logs-winlog.winlog-default", reason: "ticket Y" }
+  - { pattern: "*-tst", reason: "alle test-streams" }
+
+# optioneel: ansible leidend maken en al het overige opruimen
+cpm_stream_exclusions_prune: false
+```
+Uitrollen: `ansible-playbook -i inventories/<env> site.yml --tags exclusions`
+
+Standaard **additief** — exclusions die met B1 of B3 zijn gemaakt blijven staan.
+Zet `cpm_stream_exclusions_prune: true` om de inventory leidend te maken; alles
+wat niet in de lijst staat wordt dan verwijderd.
+
+### B3. Rauw — Dev Tools
 ```
 PUT cpm-stream-exclusions/_doc/logs-winlog.winlog-default
 {
   "topic_pattern": "logs-winlog.winlog-default",
-  "reason": "tijdelijk buiten CPM (ticket Y)",
-  "updated_by": "beheerder",
-  "updated_at": "2026-07-03T10:00:00Z"
+  "reason": "tijdelijk buiten CPM (ticket Y)"
 }
 ```
-- `topic_pattern` mag een **wildcard** (`*`) bevatten — de state-manager matcht
-  exact, prefix (`logs-winlog.*`), suffix (`*-tst`) of prefix+suffix.
-- Doorvoeren = zelfde run als bij A.
-- **Controle:** de topic is verdwenen uit `cpm-pipeline-state` én uit alle pipelines.
+`updated_at` en `updated_by` hoef je **niet** mee te geven: de index heeft
+`default_pipeline: cpm-stream-exclusions-stamp`, die vult `updated_at` met de
+huidige tijd (`strict_date_time_no_millis`, UTC) en `updated_by` met `unknown`.
+Geef je ze wél mee, dan blijven jouw waarden staan (`override: false`).
+
+Met een wildcard — `*` kan niet in een document-id, dus codeer hem als `_STAR_`:
+```
+PUT cpm-stream-exclusions/_doc/_STAR_-tst
+{
+  "topic_pattern": "*-tst",
+  "reason": "alle test-streams"
+}
+```
+B1 en B2 gebruiken dezelfde codering, zodat alle drie de routes dezelfde
+documenten beheren.
+
+De mapping staat op `dynamic: strict`: alleen `topic_pattern`, `reason`,
+`updated_by` en `updated_at` zijn toegestaan. Een extra veld geeft een
+`strict_dynamic_mapping_exception`.
+
+Weghalen:
+```
+DELETE cpm-stream-exclusions/_doc/logs-winlog.winlog-default
+DELETE cpm-stream-exclusions/_doc/_STAR_-tst
+```
+
+### Doorvoeren en controleren
+- Doorvoeren = zelfde run als bij A:
+  `scripts/cpm_run_now.py --insecure --only state-manager,pipeline-manager`
+- **Controle:** de topic is verdwenen uit `cpm-pipeline-state` én uit de
+  `topics => [...]` van alle pipelines. Blijven er voor een cluster géén topics
+  over, dan wordt de hele catchall-pipeline verwijderd.
 
 ## C. TERUGDRAAIEN — let op: state is *sticky*
 
@@ -107,4 +167,4 @@ DELETE _logstash/pipeline/default_cpm-catchall-<uuid>
 | Index | Doel | Kernvelden |
 |---|---|---|
 | `cpm-routing-config` | force / stream-lock | `config_type:"stream_lock"`, `locked:true`, `data_stream_type`, `dataset`, `namespace`, `cluster_id`, `pipeline_type` |
-| `cpm-stream-exclusions` | exclude | `topic_pattern` (mag `*`), `reason`, `updated_by`, `updated_at` |
+| `cpm-stream-exclusions` | exclude | `topic_pattern` (mag één `*`), `reason`, `updated_by`, `updated_at` — beheer via `scripts/cpm_exclude_stream.py` of `cpm_stream_exclusions` in de inventory |

@@ -13,6 +13,43 @@ Watcher chain: `cpm-registry-sync` → `cpm-scoring` → `cpm-routing-advisor` �
 
 ---
 
+## Automatisch installeren in de referentie-stacks
+
+`docker-local` en `docker-acc` bouwen hun Kibana zelf, uit
+`Dockerfile.install`. Dat image pakt de al gebouwde zip uit `build/` uit, dus
+`docker compose up -d` levert altijd een Kibana mét de plugin. Voorheen moest
+de plugin na elke recreate handmatig in de draaiende container gezet worden en
+verdween hij dus bij de eerste de beste herstart.
+
+```yaml
+    build:
+      context: ../kibana_plugin
+      dockerfile: Dockerfile.install
+      args:
+        STACK_VERSION: ${STACK_VERSION}
+    image: cpm-kibana:${STACK_VERSION}
+```
+
+De zip moet exact bij `STACK_VERSION` passen; Kibana weigert een plugin waarvan
+`kibanaVersion` afwijkt. Ontbreekt hij, bouw hem dan eerst met de stappen
+hieronder. Compose bouwt alleen als `cpm-kibana:<versie>` nog niet bestaat, dus
+na het vervangen van een zip:
+
+```bash
+docker compose -f docker-local/docker-compose.yml up -d --build kibana
+docker compose -f docker-acc/docker-compose.yml  up -d --build kibana
+```
+
+Voor een air-gapped installatie is dit de bruikbare route: alleen het officiele
+Kibana-image en de zip zijn nodig, geen clone van elastic/kibana en geen
+compileerslag. Controleren:
+
+```bash
+docker exec dod-elastic-kibana-1 ls plugins      # -> cpm
+```
+
+---
+
 ## Build the plugin (step by step)
 
 The plugin **must** be compiled against the **exact** Kibana version running in production.  

@@ -1,0 +1,10 @@
+# Acceptatie-stack (docker-acc). Ansible draait lokaal en praat via HTTPS met
+# es-acc-central op de gepubliceerde poort.
+#
+# De groep [acc] is wat group_vars/acc.yml (kafka_topic_extension: "-acc")
+# laat gelden; zonder die groep valt de role terug op de default "".
+[cpm]
+localhost ansible_connection=local
+
+[acc:children]
+cpm

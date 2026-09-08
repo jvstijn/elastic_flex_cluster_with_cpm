@@ -26,8 +26,14 @@ if [ ! -f "${CERTS_DIR}/ca.zip" ]; then
   unzip -o "${CERTS_DIR}/ca.zip" -d "${CERTS_DIR}"
 fi
 
-if [ ! -f "${CERTS_DIR}/certs.zip" ]; then
+# Ook opnieuw genereren als er een node bijgekomen is; anders mist een
+# bestaand certs-volume het certificaat van es-monitoring.
+if [ ! -f "${CERTS_DIR}/certs.zip" ] || [ ! -d "${CERTS_DIR}/es-monitoring" ]; then
   echo "Creating node certificates"
+  # certutil weigert te schrijven als het zip er al ligt; bij een uitgebreide
+  # instances.yml moet het oude archief dus eerst weg. De al uitgepakte
+  # certificaten blijven staan en worden hooguit overschreven.
+  rm -f "${CERTS_DIR}/certs.zip"
   cat > "${CERTS_DIR}/instances.yml" <<'EOF'
 instances:
   - name: es-central
@@ -45,6 +51,12 @@ instances:
   - name: es-remote-b
     dns:
       - es-remote-b
+      - localhost
+    ip:
+      - 127.0.0.1
+  - name: es-monitoring
+    dns:
+      - es-monitoring
       - localhost
     ip:
       - 127.0.0.1
